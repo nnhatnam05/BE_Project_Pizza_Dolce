@@ -2,6 +2,7 @@ package aptech.be.controllers;
 
 import aptech.be.dto.AuthRequest;
 import aptech.be.config.JwtUtil;
+import aptech.be.dto.UserDTO;
 import aptech.be.dto.staff.UserWithProfileRequest;
 import aptech.be.models.UserEntity;
 import aptech.be.models.staff.StaffProfile;
@@ -12,6 +13,7 @@ import aptech.be.services.CustomUserDetails;
 import aptech.be.services.EmailService;
 import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -19,10 +21,12 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.AuthenticationException;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.scheduling.annotation.Scheduled;
 
@@ -47,7 +51,9 @@ public class AuthController {
     private final PasswordEncoder passwordEncoder;
     private final AuthenticationManager authenticationManager;
     private final JwtUtil jwtUtil;
-    private final UserDetailsService userDetailsService;
+    @Autowired
+    @Qualifier("userDetailsServiceImpl")
+    private UserDetailsService userDetailsService;
 
     private final EmailService emailService;
 
@@ -61,7 +67,7 @@ public class AuthController {
 
     public AuthController(
             UserRepository userRepository, PasswordEncoder passwordEncoder, AuthenticationManager authenticationManager,
-            JwtUtil jwtUtil, UserDetailsService userDetailsService, EmailService emailService,
+            JwtUtil jwtUtil,@Qualifier("userDetailsServiceImpl") UserDetailsService userDetailsService, EmailService emailService,
             StaffProfileRepository staffProfileRepository, AttendanceRecordRepository attendanceRecordRepository) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
@@ -198,18 +204,30 @@ public class AuthController {
 
 
     @GetMapping("/users")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<List<UserEntity>> getAllUsers() {
-        return ResponseEntity.ok(userRepository.findAll());
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    public ResponseEntity<?> getAllUsers() {
+        List<UserDTO> users = userRepository.findAll().stream().map(UserDTO::new).toList();
+        return ResponseEntity.ok(users);
     }
+
 
     @GetMapping("/users/{id}")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Object> getUserById(@PathVariable Long id) {
-        return userRepository.findById(id)
-                .<ResponseEntity<Object>>map(ResponseEntity::ok)
-                .orElse(ResponseEntity.status(HttpStatus.NOT_FOUND).body("User not found"));
+    public ResponseEntity<?> getUserById(@PathVariable Long id) {
+        Optional<UserEntity> userOpt = userRepository.findById(id);
+        if (userOpt.isPresent()) {
+            return ResponseEntity.ok(new UserDTO(userOpt.get()));
+        } else {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body("User not found");
+        }
     }
+
+
+
+
+
+
+
 
     @PutMapping("/users/{id}")
     @PreAuthorize("hasRole('ADMIN')")
@@ -509,22 +527,21 @@ public class AuthController {
     }
 
     @GetMapping("/me")
-    public ResponseEntity<?> getCurrentUser() {
-        var authentication = SecurityContextHolder.getContext().getAuthentication();
-
-        if (authentication == null || !authentication.isAuthenticated()) {
+    public ResponseEntity<?> getCurrentUser(@AuthenticationPrincipal Jwt jwt) {
+        if (jwt == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Unauthorized");
         }
+        String email = jwt.getSubject(); // đây chính là email theo bạn thiết lập trong token
 
-        Object principal = authentication.getPrincipal();
-
-        if (principal instanceof CustomUserDetails customUserDetails) {
-            UserEntity user = customUserDetails.getUserEntity();
-            return ResponseEntity.ok(user);
-        }
-
-        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid token or user");
+        // Lấy user từ DB theo email
+        UserEntity user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+        return ResponseEntity.ok(new UserDTO(user));
     }
+
+
+
+
 
 
 

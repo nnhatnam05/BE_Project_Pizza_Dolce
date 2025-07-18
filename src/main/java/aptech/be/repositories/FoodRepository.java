@@ -11,4 +11,5 @@ public interface FoodRepository extends JpaRepository<Food,Long> {
     List<Food> findByNameContainingIgnoreCase(String keyword);
     Optional<Food> findByName(String name);
     Optional<Food> findByImageUrl(String imageUrl);
+    List<Food> findByType(String type);
 }

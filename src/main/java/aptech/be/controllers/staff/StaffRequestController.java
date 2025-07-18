@@ -36,13 +36,17 @@ public class StaffRequestController {
     @PreAuthorize("hasRole('STAFF')")
     public ResponseEntity<?> createRequest(@RequestBody StaffRequestCreateDto dto, Principal principal) {
         String username = principal.getName();
-        // Lấy user từ username
-        UserEntity user = userRepository.findByUsername(username)
+        System.out.println("Principal name: " + username);
+
+        // Sửa thành tìm theo username (vì principal.getName() trả username)
+        UserEntity user = userRepository.findByEmail(username)
                 .orElseThrow(() -> new RuntimeException("User not found"));
+
         Long userId = user.getId();
         StaffRequest req = staffRequestService.createRequest(userId, dto);
         return ResponseEntity.ok(req);
     }
+
 
 
     @GetMapping("/request")
@@ -74,10 +78,10 @@ public class StaffRequestController {
 
 
     @GetMapping("/me")
-    @PreAuthorize("hasRole('STAFF')")
+    @PreAuthorize("hasAuthority('ROLE_STAFF')")
     public ResponseEntity<List<StaffRequestAdminViewDto>> getMyRequests(Principal principal) {
         String username = principal.getName();
-        UserEntity user = userRepository.findByUsername(username)
+        UserEntity user = userRepository.findByEmail(username)
                 .orElseThrow(() -> new RuntimeException("User not found"));
         StaffProfile staff = staffProfileRepository.findByUser(user)
                 .orElseThrow(() -> new RuntimeException("Staff profile not found"));

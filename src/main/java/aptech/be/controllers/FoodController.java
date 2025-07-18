@@ -4,6 +4,7 @@ import aptech.be.models.Food;
 import aptech.be.repositories.FoodRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
@@ -29,12 +30,14 @@ public class FoodController {
         return foodRepo.findAll();
     }
 
-    @PostMapping(consumes = "multipart/form-data")
+    @PostMapping(value = "/create" , consumes = "multipart/form-data")
+    @PreAuthorize("hasRole('ADMIN')")
     public Food createFood(
             @RequestParam("name") String name,
             @RequestParam("price") double price,
             @RequestParam("description") String description,
             @RequestParam("status") String status,
+            @RequestParam("type")  String type,
             @RequestParam(value = "image", required = false) MultipartFile imageFile
     ) {
         try {
@@ -48,6 +51,7 @@ public class FoodController {
             food.setPrice(price);
             food.setDescription(description);
             food.setStatus(status);
+            food.setType(type);
 
             if (imageFile != null && !imageFile.isEmpty()) {
                 String fileName = System.currentTimeMillis() + "_" + imageFile.getOriginalFilename();
@@ -80,18 +84,20 @@ public class FoodController {
 
 
     @PostMapping(value = "/update/{id}", consumes = "multipart/form-data")
+    @PreAuthorize("hasRole('ADMIN')")
     public Food updateFood(
             @PathVariable Long id,
             @RequestParam("name") String name,
             @RequestParam("price") double price,
             @RequestParam("description") String description,
             @RequestParam("status") String status,
+            @RequestParam("type") String type,
             @RequestParam(value = "image", required = false) MultipartFile imageFile
     ) {
         Food existing = foodRepo.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Food not found"));
 
-        // Nếu đổi tên và name mới đã tồn tại thì báo lỗi
+
         if (!existing.getName().equals(name) && foodRepo.findByName(name).isPresent()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Food name already exists");
         }
@@ -100,6 +106,7 @@ public class FoodController {
         existing.setPrice(price);
         existing.setDescription(description);
         existing.setStatus(status);
+        existing.setType(type);
 
         if (imageFile != null && !imageFile.isEmpty()) {
             try {
@@ -142,6 +149,7 @@ public class FoodController {
 
 
     @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
     public void deleteFood(@PathVariable Long id) {
         Food food = foodRepo.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Food not found"));
@@ -163,12 +171,15 @@ public class FoodController {
     @GetMapping("/filter")
     public List<Food> filterFoods(
             @RequestParam(required = false) String status,
-            @RequestParam(required = false) String name
+            @RequestParam(required = false) String name,
+            @RequestParam(required = false) String type
     ) {
         if (status != null) {
             return foodRepo.findByStatus(status);
         } else if (name != null) {
             return foodRepo.findByNameContainingIgnoreCase(name);
+        }else if (type != null) {
+            return foodRepo.findByType(type);
         } else {
             return foodRepo.findAll();
         }

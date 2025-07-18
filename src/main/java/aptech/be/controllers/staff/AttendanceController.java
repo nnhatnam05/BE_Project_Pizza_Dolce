@@ -49,8 +49,9 @@ public class AttendanceController {
     }
 
 
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('VIEW_REPORT')")
+
     @GetMapping("/reports/monthly")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('VIEW_REPORT')")
     public ResponseEntity<List<AttendanceReport>> getMonthlyReport(
             @RequestParam int year,
             @RequestParam int month) {

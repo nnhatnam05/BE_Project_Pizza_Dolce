@@ -1,13 +1,16 @@
 package aptech.be.config;
 
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.annotation.Order;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
-import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
@@ -19,24 +22,36 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
+import java.util.Collections;
+import java.util.List;
+import java.util.stream.Collectors;
 
 @Configuration
 @EnableMethodSecurity
 public class SecurityConfig {
+    @Value("${app.jwtSecret}")
+    private String jwtSecret;
 
-    private static final String SECRET_KEY = "aptech-secret-key-aptech-secret-key";
+    private final JwtFilterForAdmin jwtFilterForAdmin;
+    private final JwtFilterForCustomer jwtFilterForCustomer;
 
-    private final UserDetailsService userDetailsService;
-    private final JwtFilter jwtFilter;
-
-    public SecurityConfig(UserDetailsService userDetailsService, JwtFilter jwtFilter) {
-        this.userDetailsService = userDetailsService;
-        this.jwtFilter = jwtFilter;
+    public SecurityConfig(
+            @Qualifier("jwtFilterForAdmin") JwtFilterForAdmin jwtFilterForAdmin,
+            @Qualifier("jwtFilterForCustomer") JwtFilterForCustomer jwtFilterForCustomer
+    ) {
+        this.jwtFilterForAdmin = jwtFilterForAdmin;
+        this.jwtFilterForCustomer = jwtFilterForCustomer;
     }
 
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
+    }
+
+    @Bean
+    public JwtDecoder jwtDecoder(@Value("${app.jwtSecret}") String jwtSecret) {
+        SecretKey secretKey = new SecretKeySpec(jwtSecret.getBytes(StandardCharsets.UTF_8), "HmacSHA256");
+        return NimbusJwtDecoder.withSecretKey(secretKey).build();
     }
 
     @Bean
@@ -47,37 +62,104 @@ public class SecurityConfig {
     @Bean
     public JwtAuthenticationConverter jwtAuthenticationConverter() {
         JwtAuthenticationConverter converter = new JwtAuthenticationConverter();
-        converter.setJwtGrantedAuthoritiesConverter(new CustomJwtAuthenticationConverter());
+        converter.setJwtGrantedAuthoritiesConverter(jwt -> {
+            List<String> authorities = jwt.getClaimAsStringList("authorities");
+            if (authorities == null) return Collections.emptyList();
+            return authorities.stream()
+                    .map(SimpleGrantedAuthority::new)
+                    .collect(Collectors.toList());
+        });
         return converter;
     }
 
-    @Bean
-    public JwtDecoder jwtDecoder() {
-        SecretKey secretKey = new SecretKeySpec(SECRET_KEY.getBytes(StandardCharsets.UTF_8), "HmacSHA256");
-        return NimbusJwtDecoder.withSecretKey(secretKey).build();
-    }
+
+
+
 
     @Bean
-    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+    @Order(0)
+    public SecurityFilterChain loginFilterChain(HttpSecurity http) throws Exception {
         http
+                .securityMatcher("/api/auth/login")
+                .csrf(csrf -> csrf.disable())
+                .authorizeHttpRequests(auth -> auth.anyRequest().permitAll());
+        return http.build();
+    }
+
+
+    @Bean
+    @Order(1)
+    public SecurityFilterChain staticResourceChain(HttpSecurity http) throws Exception {
+        http
+                .securityMatcher("/uploads/**")
+                .csrf(csrf -> csrf.disable())
+                .authorizeHttpRequests(auth -> auth.anyRequest().permitAll());
+        return http.build();
+    }
+
+
+    @Bean
+    @Order(2)
+    public SecurityFilterChain customerFilterChain(HttpSecurity http) throws Exception {
+        http
+                .securityMatcher("/api/customer/**")
                 .csrf(csrf -> csrf.disable())
                 .cors(cors -> {})
                 .sessionManagement(sess -> sess.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/auth/login").permitAll()
-                        .requestMatchers("/api/auth/forgot-password", "/api/auth/verify-code", "/api/auth/verify-2fa", "/uploads/**")
-                        .permitAll()
-                        .requestMatchers("/api/auth/send-mail").permitAll()
-                        .requestMatchers("/api/auth/register").hasRole("ADMIN")
-                        .requestMatchers("/api/admin/**").hasRole("ADMIN")
-                        .requestMatchers("/api/attendance/face-scan").permitAll()
-                        .requestMatchers("/attendance/reports/**").permitAll()
-                        .requestMatchers("/api/staff/request/**").hasAnyRole("STAFF", "ADMIN")
-                        .requestMatchers("/api/notification/**").permitAll()
+                        .requestMatchers("/api/customer/login", "/api/customer/register", "/api/customer/google-login").permitAll()
+                        .requestMatchers("/api/customer/me/detail", "/api/customer/change-password").hasAuthority("ROLE_CUSTOMER")
                         .anyRequest().authenticated()
                 )
-                .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
+                .addFilterBefore(jwtFilterForCustomer, UsernamePasswordAuthenticationFilter.class)
+                .oauth2ResourceServer(oauth2 -> oauth2
+                        .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter()))
+                );
+        return http.build();
+    }
 
+
+    @Bean
+    @Order(3)
+    public SecurityFilterChain adminStaffFilterChain(HttpSecurity http) throws Exception {
+        http
+                .securityMatcher(request -> {
+                    String path = request.getServletPath();
+                    // Exclude /api/auth/login khỏi matcher này!
+                    return (path.startsWith("/api/admin/")
+                            || path.startsWith("/api/staff/")
+                            || (path.startsWith("/api/auth/") && !path.equals("/api/auth/login"))
+                            || path.startsWith("/api/attendance/")
+                            || path.startsWith("/api/notification/")
+                            || path.startsWith("/attendance/reports/"));
+                })
+                .csrf(csrf -> csrf.disable())
+                .cors(cors -> {})
+                .sessionManagement(sess -> sess.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .authorizeHttpRequests(auth -> auth
+                        .requestMatchers("/api/auth/users").hasAnyAuthority("ROLE_ADMIN")
+                        .requestMatchers("/api/attendance/reports/**").hasAuthority("ROLE_ADMIN")
+                        .requestMatchers("/api/staff/request").hasAnyAuthority("ROLE_ADMIN","ROLE_STAFF")
+                        .requestMatchers("/api/staff/me").hasAuthority("ROLE_STAFF")
+                        .requestMatchers("api/payment-methods/create").hasAuthority("ROLE_ADMIN")
+                        .requestMatchers("api/payment-methods/delete").hasAuthority("ROLE_ADMIN")
+                        .requestMatchers("api/payment-methods/update").hasAuthority("ROLE_ADMIN")
+                        .requestMatchers("api/payment-methods/get").permitAll()
+                        .requestMatchers("/api/foods/create").hasAuthority("ROLE_ADMIN")
+                        .requestMatchers("/api/foods/delete").hasAuthority("ROLE_ADMIN")
+                        .requestMatchers("/api/foods/update").hasAuthority("ROLE_ADMIN")
+                        .requestMatchers("/api/foods").permitAll()
+                        .requestMatchers("/api/orders/waiting-confirm").hasAnyAuthority("ROLE_ADMIN","ROLE_STAFF")
+                        .requestMatchers("/api/orders/{id}/delivery-status").hasAuthority("ROLE_STAFF")
+                        .requestMatchers("/api/orders/{id}/admin-confirm").hasAuthority("ROLE_ADMIN")
+
+
+                        .anyRequest().authenticated()
+                )
+                .addFilterBefore(jwtFilterForAdmin, UsernamePasswordAuthenticationFilter.class)
+                .oauth2ResourceServer(oauth2 -> oauth2
+                        .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter()))
+                );
         return http.build();
     }
 }

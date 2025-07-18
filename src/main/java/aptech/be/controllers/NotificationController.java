@@ -7,6 +7,8 @@ import aptech.be.models.UserEntity;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
 import java.security.Principal;
@@ -30,10 +32,16 @@ public class NotificationController {
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<List<Notification>> getNotifications(
             @RequestParam(value = "unreadOnly", required = false, defaultValue = "false") boolean unreadOnly,
-            Principal principal) {
-        String username = principal.getName();
-        UserEntity user = userRepository.findByUsername(username)
+            @AuthenticationPrincipal UserDetails userDetails) {
+        if (userDetails == null) throw new RuntimeException("Chưa đăng nhập!");
+
+        // Lấy username hoặc email
+        String username = userDetails.getUsername();
+
+        // Nếu là user admin/staff
+        UserEntity user = userRepository.findByEmail(username)
                 .orElseThrow(() -> new RuntimeException("User not found"));
+
         Long userId = user.getId();
 
         List<Notification> list = unreadOnly ?

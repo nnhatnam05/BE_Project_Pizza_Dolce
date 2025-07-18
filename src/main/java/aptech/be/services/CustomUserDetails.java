@@ -39,7 +39,7 @@ public class CustomUserDetails implements UserDetails {
 
     @Override
     public String getUsername() {
-        return user.getUsername(); // Hoặc return getEmail() nếu bạn dùng email làm username
+        return user.getEmail(); // Hoặc return getEmail() nếu bạn dùng email làm username
     }
 
     @Override public boolean isAccountNonExpired() { return true; }
