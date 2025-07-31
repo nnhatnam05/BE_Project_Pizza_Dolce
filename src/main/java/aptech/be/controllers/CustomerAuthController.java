@@ -7,6 +7,7 @@ import aptech.be.models.CustomerDetail;
 import aptech.be.repositories.CustomerDetailRepository;
 import aptech.be.repositories.CustomerRepository;
 import aptech.be.services.CustomerService;
+import aptech.be.services.EmailService;
 import aptech.be.services.UserDetailsServiceImpl;
 import com.google.api.client.googleapis.auth.oauth2.GoogleIdToken;
 import com.google.api.client.googleapis.auth.oauth2.GoogleIdTokenVerifier;
@@ -25,6 +26,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Map;
 import java.util.UUID;
 
 import java.util.Collections;
@@ -50,14 +52,32 @@ public class CustomerAuthController {
     @Autowired
     private CustomerDetailRepository customerDetailRepository;
 
+    @Autowired
+    private EmailService emailService;
+
     @PostMapping("/register")
     public ResponseEntity<?> register(@RequestBody CustomerSignupRequest request) {
-        String result = customerService.register(request);
+        if (customerService.findByEmail(request.getEmail()) != null) {
+            return ResponseEntity.badRequest().body(new CustomerSignupResponse("Email already registered"));
+        }
+        customerService.generateAndSendVerificationCode(request.getEmail());
+        return ResponseEntity.ok(new CustomerSignupResponse("Verification code sent to email"));
+    }
+
+    @PostMapping("/verify-code")
+    public ResponseEntity<?> verifyCode(@RequestBody CustomerVerifyCodeRequest request) {
+        CustomerSignupRequest signupReq = new CustomerSignupRequest();
+        signupReq.setEmail(request.getEmail());
+        signupReq.setFullName(request.getFullName());
+        signupReq.setPassword(request.getPassword());
+
+        String result = customerService.verifyCodeAndCreateCustomer(signupReq, request.getCode());
         if ("Registration successful".equals(result)) {
             return ResponseEntity.ok(new CustomerSignupResponse(result));
         }
         return ResponseEntity.badRequest().body(new CustomerSignupResponse(result));
     }
+
 
     @PostMapping("/login")
     public ResponseEntity<?> login(@RequestBody CustomerLoginRequest request) {
@@ -134,6 +154,7 @@ public class CustomerAuthController {
     @PreAuthorize("hasRole('CUSTOMER')")
     public ResponseEntity<?> getMyDetail(Authentication authentication) {
         System.out.println("Authorities: " + authentication.getAuthorities());
+
         String email = authentication.getName();
         Customer customer = customerService.findByEmail(email);
         if (customer == null) {
@@ -249,6 +270,31 @@ public class CustomerAuthController {
         customerDetailRepository.delete(detail);
 
         return ResponseEntity.ok("Customer detail deleted");
+    }
+
+    @PostMapping("/forgot-password")
+    public ResponseEntity<?> forgotPassword(@RequestBody Map<String, String> body) {
+        String email = body.get("email");
+        if (customerService.findByEmail(email) == null) {
+            return ResponseEntity.badRequest().body("Email not found");
+        }
+        String result = customerService.generateAndSendVerificationCode(email);
+        if (result.startsWith("Verification")) {
+            return ResponseEntity.ok(result);
+        }
+        return ResponseEntity.status(429).body(result); // 429: Too Many Requests
+    }
+
+    @PostMapping("/reset-password")
+    public ResponseEntity<?> resetPassword(@RequestBody Map<String, String> body) {
+        String email = body.get("email");
+        String code = body.get("code");
+        String newPassword = body.get("newPassword");
+        String result = customerService.resetPassword(email, code, newPassword);
+        if ("Password reset successful".equals(result)) {
+            return ResponseEntity.ok(result);
+        }
+        return ResponseEntity.badRequest().body(result);
     }
 
 }

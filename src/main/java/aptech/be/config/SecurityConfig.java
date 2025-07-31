@@ -72,12 +72,28 @@ public class SecurityConfig {
         return converter;
     }
 
-
-
+    @Bean
+    @Order(0)
+    public SecurityFilterChain payosPublicChain(HttpSecurity http) throws Exception {
+        http
+            .securityMatcher(request -> {
+                String path = request.getServletPath();
+                return path.startsWith("/api/orders/payment/qr/")
+                    || path.equals("/api/orders/payment/payos/webhook")
+                    || path.equals("/api/orders/payment/payos/return")
+                    || path.equals("/api/orders/test-webhook")
+                    || path.equals("/api/orders/manual-update-status")
+                    || path.equals("/api/orders/payment/payos/cancel")
+                    || path.equals("/api/orders/payos/test-create-url");
+            })
+            .csrf(csrf -> csrf.disable())
+            .authorizeHttpRequests(auth -> auth.anyRequest().permitAll());
+        return http.build();
+    }
 
 
     @Bean
-    @Order(0)
+    @Order(1)
     public SecurityFilterChain loginFilterChain(HttpSecurity http) throws Exception {
         http
                 .securityMatcher("/api/auth/login")
@@ -88,7 +104,7 @@ public class SecurityConfig {
 
 
     @Bean
-    @Order(1)
+    @Order(2)
     public SecurityFilterChain staticResourceChain(HttpSecurity http) throws Exception {
         http
                 .securityMatcher("/uploads/**")
@@ -99,16 +115,48 @@ public class SecurityConfig {
 
 
     @Bean
-    @Order(2)
+    @Order(3)
     public SecurityFilterChain customerFilterChain(HttpSecurity http) throws Exception {
         http
-                .securityMatcher("/api/customer/**")
+                .securityMatcher(request -> {
+                    String path = request.getServletPath();
+                    return path.startsWith("/api/customer/")|| path.startsWith("/api/orders/my");
+                })
                 .csrf(csrf -> csrf.disable())
                 .cors(cors -> {})
                 .sessionManagement(sess -> sess.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/customer/login", "/api/customer/register", "/api/customer/google-login").permitAll()
-                        .requestMatchers("/api/customer/me/detail", "/api/customer/change-password").hasAuthority("ROLE_CUSTOMER")
+                        // Các endpoint public
+                        .requestMatchers(
+                                "/api/customer/login",
+                                "/api/customer/register",
+                                "/api/customer/verify-code",
+                                "/api/customer/google-login",
+                                "/api/customer/forgot-password",
+                                "/api/customer/reset-password"
+
+                        ).permitAll()
+
+                        // Các endpoint dành riêng cho customer
+                        .requestMatchers(
+                                "/api/customer/me/detail",
+                                "/api/customer/change-password",
+                                "/api/orders/create",
+                                "/api/orders/cancel/**",
+                                "/api/orders/update/**",
+                                "/api/orders/myorder",
+                                "/api/orders/my/waiting-confirm",
+                                "/api/orders/my/*/delivery-status",
+                                "/api/orders/my/**"
+                        ).hasAuthority("ROLE_CUSTOMER")
+
+                        // Nếu có cho customer xem detail đơn hàng riêng mình, giữ rule này (trong controller đã kiểm tra chủ đơn)
+                        .requestMatchers("/api/orders/{id}").hasAuthority("ROLE_CUSTOMER")
+
+                        // Các endpoint GET món ăn (menu, v.v...) cho phép public nếu muốn
+                        .requestMatchers("/api/foods").permitAll()
+
+                        // Còn lại bắt buộc phải đăng nhập
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtFilterForCustomer, UsernamePasswordAuthenticationFilter.class)
@@ -119,8 +167,9 @@ public class SecurityConfig {
     }
 
 
+
     @Bean
-    @Order(3)
+    @Order(4)
     public SecurityFilterChain adminStaffFilterChain(HttpSecurity http) throws Exception {
         http
                 .securityMatcher(request -> {
@@ -131,7 +180,9 @@ public class SecurityConfig {
                             || (path.startsWith("/api/auth/") && !path.equals("/api/auth/login"))
                             || path.startsWith("/api/attendance/")
                             || path.startsWith("/api/notification/")
-                            || path.startsWith("/attendance/reports/"));
+                            || path.startsWith("/attendance/reports/")
+                            || path.startsWith("/api/orders/")
+                    );
                 })
                 .csrf(csrf -> csrf.disable())
                 .cors(cors -> {})
@@ -141,10 +192,10 @@ public class SecurityConfig {
                         .requestMatchers("/api/attendance/reports/**").hasAuthority("ROLE_ADMIN")
                         .requestMatchers("/api/staff/request").hasAnyAuthority("ROLE_ADMIN","ROLE_STAFF")
                         .requestMatchers("/api/staff/me").hasAuthority("ROLE_STAFF")
-                        .requestMatchers("api/payment-methods/create").hasAuthority("ROLE_ADMIN")
-                        .requestMatchers("api/payment-methods/delete").hasAuthority("ROLE_ADMIN")
-                        .requestMatchers("api/payment-methods/update").hasAuthority("ROLE_ADMIN")
-                        .requestMatchers("api/payment-methods/get").permitAll()
+                        .requestMatchers("/api/payment-methods/create").hasAuthority("ROLE_ADMIN")
+                        .requestMatchers("/api/payment-methods/delete").hasAuthority("ROLE_ADMIN")
+                        .requestMatchers("/api/payment-methods/update").hasAuthority("ROLE_ADMIN")
+                        .requestMatchers("/api/payment-methods/get").permitAll()
                         .requestMatchers("/api/foods/create").hasAuthority("ROLE_ADMIN")
                         .requestMatchers("/api/foods/delete").hasAuthority("ROLE_ADMIN")
                         .requestMatchers("/api/foods/update").hasAuthority("ROLE_ADMIN")
@@ -152,6 +203,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/orders/waiting-confirm").hasAnyAuthority("ROLE_ADMIN","ROLE_STAFF")
                         .requestMatchers("/api/orders/{id}/delivery-status").hasAuthority("ROLE_STAFF")
                         .requestMatchers("/api/orders/{id}/admin-confirm").hasAuthority("ROLE_ADMIN")
+                        .requestMatchers("/api/attendance/face-scan").permitAll()
 
 
                         .anyRequest().authenticated()

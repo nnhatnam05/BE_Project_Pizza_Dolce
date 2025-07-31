@@ -1,9 +1,12 @@
 package aptech.be.controllers;
 
+import aptech.be.models.OrderEntity;
 import aptech.be.models.PaymentMethod;
+import aptech.be.repositories.OrderRepository;
 import aptech.be.repositories.PaymentMethodRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
@@ -23,6 +26,8 @@ public class PaymentMethodController {
 
     @Value("${upload.path}")
     private String uploadPath;
+    @Autowired
+    private OrderRepository orderRepository;
 
     @GetMapping
     public List<PaymentMethod> getAllPaymentMethods() {
@@ -106,4 +111,6 @@ public class PaymentMethodController {
         }
         paymentMethodRepository.deleteById(id);
     }
+
+
 }

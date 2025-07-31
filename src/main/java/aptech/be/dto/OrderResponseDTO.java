@@ -10,9 +10,9 @@ public class OrderResponseDTO {
     private String orderNumber;
     private List<FoodDTO> foodList;
     private CustomerDTO customer;
-    private PaymentMethodDTO paymentMethod;
     private Double totalPrice;
     private String status;
+    private String note;
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime createdAt;
 
@@ -54,14 +54,6 @@ public class OrderResponseDTO {
 
     public void setCustomer(CustomerDTO customer) {
         this.customer = customer;
-    }
-
-    public PaymentMethodDTO getPaymentMethod() {
-        return paymentMethod;
-    }
-
-    public void setPaymentMethod(PaymentMethodDTO paymentMethod) {
-        this.paymentMethod = paymentMethod;
     }
 
     public Double getTotalPrice() {
@@ -126,5 +118,13 @@ public class OrderResponseDTO {
 
     public void setStatusHistory(List<OrderStatusHistoryDTO> statusHistory) {
         this.statusHistory = statusHistory;
+    }
+
+    public String getNote() {
+        return note;
+    }
+
+    public void setNote(String note) {
+        this.note = note;
     }
 }

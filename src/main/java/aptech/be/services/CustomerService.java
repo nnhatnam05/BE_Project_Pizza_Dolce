@@ -7,8 +7,12 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ThreadLocalRandom;
+
 @Service
-public class CustomerService{
+public class CustomerService {
 
     @Autowired
     private CustomerRepository customerRepository;
@@ -16,12 +20,47 @@ public class CustomerService{
     @Autowired
     private PasswordEncoder passwordEncoder;
 
+
+    private final ConcurrentHashMap<String, String> verificationCodes = new ConcurrentHashMap<>();
+    @Autowired
+    private EmailService emailService;
+
+    private final ConcurrentHashMap<String, Integer> sentCount = new ConcurrentHashMap<>();
+
+    private final ConcurrentHashMap<String, LocalDateTime> blockedEmails = new ConcurrentHashMap<>();
+
+    private final int BLOCK_MINUTES = 3;
+
     public Customer findByEmail(String email) {
-        return customerRepository.findByEmail(email);
+        return customerRepository.findByEmail(email).orElse(null);
     }
 
+
     public String register(CustomerSignupRequest req) {
-        if (customerRepository.findByEmail(req.getEmail()) != null) {
+        if (customerRepository.findByEmail(req.getEmail()).orElse(null) != null) {
+            return "Email already registered";
+        }
+
+        String code = String.format("%06d", ThreadLocalRandom.current().nextInt(1000000));
+        verificationCodes.put(req.getEmail(), code);
+
+
+        sendVerificationCodeEmail(req.getEmail(), code);
+
+        return "Verification code sent to email";
+    }
+
+
+    public String verifyCodeAndCreateCustomer(CustomerSignupRequest req, String code) {
+        String correctCode = verificationCodes.get(req.getEmail());
+        if (correctCode == null) {
+            return "No verification code sent to this email";
+        }
+        if (!correctCode.equals(code)) {
+            return "Invalid verification code";
+        }
+        if (customerRepository.findByEmail(req.getEmail()).orElse(null) != null) {
+            verificationCodes.remove(req.getEmail());
             return "Email already registered";
         }
         Customer customer = new Customer();
@@ -29,11 +68,14 @@ public class CustomerService{
         customer.setEmail(req.getEmail());
         customer.setPassword(passwordEncoder.encode(req.getPassword()));
         customerRepository.save(customer);
+        verificationCodes.remove(req.getEmail());
         return "Registration successful";
     }
 
+
     public String changePassword(String email, String oldPassword, String newPassword) {
-        Customer customer = customerRepository.findByEmail(email);
+        Customer customer = customerRepository.findByEmail(email).orElse(null);
+
         if (customer == null) {
             return "User not found";
         }
@@ -48,8 +90,51 @@ public class CustomerService{
     public boolean checkPassword(String rawPassword, String encodedPassword) {
         return passwordEncoder.matches(rawPassword, encodedPassword);
     }
+
     public void save(Customer customer) {
         customerRepository.save(customer);
+    }
+
+    private void sendVerificationCodeEmail(String email, String code) {
+        System.out.println("Sending verification code " + code + " to " + email);
+    }
+    public String generateAndSendVerificationCode(String email) {
+
+        if (blockedEmails.containsKey(email) && LocalDateTime.now().isBefore(blockedEmails.get(email))) {
+            return "Too many requests. Try again later!";
+        }
+        int count = sentCount.getOrDefault(email, 0);
+        if (count >= 3) {
+            blockedEmails.put(email, LocalDateTime.now().plusMinutes(BLOCK_MINUTES));
+            sentCount.remove(email);
+            return "Too many requests. Blocked for " + BLOCK_MINUTES + " minutes";
+        }
+
+        String code = String.format("%06d", java.util.concurrent.ThreadLocalRandom.current().nextInt(1000000));
+        verificationCodes.put(email, code);
+        sentCount.put(email, count + 1);
+        emailService.sendVerificationCode(email, code);
+        return "Verification code sent to email";
+    }
+
+    public String resetPassword(String email, String code, String newPassword) {
+        String correctCode = verificationCodes.get(email);
+        if (correctCode == null) {
+            return "No verification code sent to this email";
+        }
+        if (!correctCode.equals(code)) {
+            return "Invalid verification code";
+        }
+        Customer customer = customerRepository.findByEmail(email).orElse(null);
+
+        if (customer == null) {
+            return "User not found";
+        }
+        customer.setPassword(passwordEncoder.encode(newPassword));
+        customerRepository.save(customer);
+        verificationCodes.remove(email);
+        sentCount.remove(email);
+        return "Password reset successful";
     }
 
 }

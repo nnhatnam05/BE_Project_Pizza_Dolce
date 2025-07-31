@@ -8,6 +8,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 
 @Entity
@@ -24,13 +25,9 @@ public class OrderEntity {
     private String orderNumber;
 
 
-    @ManyToMany
-    @JoinTable(
-            name = "order_foods",
-            joinColumns = @JoinColumn(name = "order_id"),
-            inverseJoinColumns = @JoinColumn(name = "food_id")
-    )
-    private List<Food> foods;
+    @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<OrderFood> orderFoods = new ArrayList<>();
+
 
     private Double totalPrice;
 
@@ -47,7 +44,9 @@ public class OrderEntity {
     @JoinColumn(name = "payment_method_id")
     private PaymentMethod paymentMethod;
 
-    private String confirmStatus; // WAITING_CONFIRM, CONFIRMED, REJECTED
+    private String note; //Ghi chú từ khách hàng
+
+    private String confirmStatus; // WAITING_PAYMENT, CONFIRMED, REJECTED
     private String rejectReason;  // Lý do từ chối nếu có
 //    private Boolean paid;
 
@@ -72,12 +71,12 @@ public class OrderEntity {
         this.orderNumber = orderNumber;
     }
 
-    public List<Food> getFoods() {
-        return foods;
+    public List<OrderFood> getOrderFoods() {
+        return orderFoods;
     }
 
-    public void setFoods(List<Food> foods) {
-        this.foods = foods;
+    public void setOrderFoods(List<OrderFood> orderFoods) {
+        this.orderFoods = orderFoods;
     }
 
     public Double getTotalPrice() {
@@ -150,5 +149,13 @@ public class OrderEntity {
 
     public void setDeliveryNote(String deliveryNote) {
         this.deliveryNote = deliveryNote;
+    }
+
+    public String getNote() {
+        return note;
+    }
+
+    public void setNote(String note) {
+        this.note = note;
     }
 }

@@ -3,9 +3,9 @@ package aptech.be.dto;
 import java.util.List;
 
 public class OrderRequestDTO {
-        private Long customerId;
-        private List<Long> foodIds;
-        private Long paymentMethodId;
+    private Long customerId;
+    private List<FoodOrderItemDTO> foods; // <--- giữ lại cái này
+    private String note;
 
     public Long getCustomerId() {
         return customerId;
@@ -15,19 +15,19 @@ public class OrderRequestDTO {
         this.customerId = customerId;
     }
 
-    public List<Long> getFoodIds() {
-        return foodIds;
+    public List<FoodOrderItemDTO> getFoods() {
+        return foods;
     }
 
-    public void setFoodIds(List<Long> foodIds) {
-        this.foodIds = foodIds;
+    public void setFoods(List<FoodOrderItemDTO> foods) {
+        this.foods = foods;
     }
 
-    public Long getPaymentMethodId() {
-        return paymentMethodId;
+    public String getNote() {
+        return note;
     }
 
-    public void setPaymentMethodId(Long paymentMethodId) {
-        this.paymentMethodId = paymentMethodId;
+    public void setNote(String note) {
+        this.note = note;
     }
 }

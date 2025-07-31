@@ -45,7 +45,8 @@ public class UserDetailsServiceImpl implements UserDetailsService {
         }
 
         // Tìm trong customer (bằng email)
-        Customer customer = customerRepository.findByEmail(usernameOrEmail);
+        Customer customer = customerRepository.findByEmail(usernameOrEmail).orElse(null);
+
         if (customer != null) {
             System.out.println("CUSTOMER LOGIN: " + customer.getEmail());
             return new CustomerDetails(customer);

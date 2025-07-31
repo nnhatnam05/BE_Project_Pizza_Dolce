@@ -12,8 +12,10 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 
 @RestController
+@RestControllerAdvice
 @RequestMapping("api/attendance")
 public class AttendanceController {
 
@@ -30,11 +32,12 @@ public class AttendanceController {
     @PostMapping("/face-scan")
     public ResponseEntity<AttendanceResponse> scanFace(
             @RequestParam("frames") List<MultipartFile> frames,
-            @RequestParam("staffCode") String staffCode) {
+            @RequestParam(value = "staffCode", required = false) String staffCode) {
 
         AttendanceResponse resp = attendanceService.recordAttendanceByFace(frames, staffCode);
         return ResponseEntity.ok(resp);
     }
+
 
 
 
@@ -58,5 +61,12 @@ public class AttendanceController {
 
         List<AttendanceReport> reports = attendanceService.generateMonthlyReports(year, month);
         return ResponseEntity.ok(reports);
+    }
+
+    @ExceptionHandler(RuntimeException.class)
+    public ResponseEntity<?> handleRuntimeException(RuntimeException ex) {
+        return ResponseEntity
+                .status(400)
+                .body(Map.of("message", ex.getMessage()));
     }
 }

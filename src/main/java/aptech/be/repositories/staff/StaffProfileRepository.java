@@ -9,5 +9,7 @@ import java.util.Optional;
 public interface StaffProfileRepository extends JpaRepository<StaffProfile, Long> {
     Optional<StaffProfile> findByStaffCode(String staffCode);
     Optional<StaffProfile> findByUser(UserEntity user);
+    Optional<StaffProfile> findByUserId(Long userId);
+
 
 }

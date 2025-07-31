@@ -4,6 +4,10 @@ public class FoodDTO {
     private Long id;
     private String name;
     private Double price;
+    private Integer quantity;
+
+    public Integer getQuantity() { return quantity; }
+    public void setQuantity(Integer quantity) { this.quantity = quantity; }
 
     public Long getId() {
         return id;
