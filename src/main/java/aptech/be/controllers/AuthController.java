@@ -102,8 +102,19 @@ public class AuthController {
         }
 
         String code = String.format("%06d", ThreadLocalRandom.current().nextInt(1000000));
+        System.out.println("DEBUG: Creating verification code for email: " + email);
+        System.out.println("DEBUG: Generated code: " + code);
+        
         verificationCodes.put(email, code);
+        System.out.println("DEBUG: Code stored in verificationCodes map");
+        
+        try {
         emailService.sendVerificationCode(email, code);
+            System.out.println("DEBUG: Email sent successfully");
+        } catch (Exception e) {
+            System.out.println("DEBUG: Email sending failed: " + e.getMessage());
+        }
+        
         System.out.println("VERIFY EMAIL: " + email);
         System.out.println("VERIFY CODE: " + code);
 
@@ -111,7 +122,8 @@ public class AuthController {
 
         return ResponseEntity.ok(Map.of(
                 "message", "Verification code sent to email",
-                "token", tempJwt
+                "token", tempJwt,
+                "email", email
         ));
 
     }
@@ -148,8 +160,8 @@ public class AuthController {
             return ResponseEntity.badRequest().body("Phone already exists");
         }
 
-        if (!role.equalsIgnoreCase("ADMIN") && !role.equalsIgnoreCase("STAFF")) {
-            return ResponseEntity.badRequest().body("Role must be ADMIN or STAFF");
+        if (!role.equalsIgnoreCase("ADMIN") && !role.equalsIgnoreCase("STAFF") && !role.equalsIgnoreCase("SHIPPER")) {
+            return ResponseEntity.badRequest().body("Role must be ADMIN or STAFF or SHIPPER");
         }
 
         UserEntity newUser = new UserEntity();
@@ -505,11 +517,31 @@ public class AuthController {
         String email = request.get("email");
         String code = request.get("code");
 
+        System.out.println("DEBUG: verify2FA called with email: " + email + ", code: " + code);
+
+        // Validate email trước
+        if (email == null || email.isBlank()) {
+            System.out.println("DEBUG: Email is null or blank");
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Email is required");
+        }
+
+        System.out.println("DEBUG: Checking if verificationCodes contains email: " + email);
+        System.out.println("DEBUG: verificationCodes keys: " + verificationCodes.keySet());
+
+        // Kiểm tra code có tồn tại không
         if (!verificationCodes.containsKey(email)) {
+            System.out.println("DEBUG: No code found for email: " + email);
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("No code sent to this email");
         }
 
-        if (!verificationCodes.get(email).equals(code)) {
+        String storedCode = verificationCodes.get(email);
+        System.out.println("DEBUG: Stored code for email " + email + ": " + storedCode);
+        System.out.println("DEBUG: Provided code: " + code);
+        System.out.println("DEBUG: Codes match: " + storedCode.equals(code));
+
+        // Kiểm tra code có đúng không
+        if (!storedCode.equals(code)) {
+            System.out.println("DEBUG: Incorrect code provided");
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Incorrect code");
         }
 

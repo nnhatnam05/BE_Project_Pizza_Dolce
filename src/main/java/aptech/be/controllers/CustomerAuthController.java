@@ -4,6 +4,7 @@ import aptech.be.config.JwtProvider;
 import aptech.be.dto.customer.*;
 import aptech.be.models.Customer;
 import aptech.be.models.CustomerDetail;
+import aptech.be.models.CustomerAddress;
 import aptech.be.repositories.CustomerDetailRepository;
 import aptech.be.repositories.CustomerRepository;
 import aptech.be.services.CustomerService;
@@ -26,10 +27,12 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.Map;
 import java.util.UUID;
 
 import java.util.Collections;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/customer")
@@ -153,8 +156,6 @@ public class CustomerAuthController {
     @GetMapping("/me/detail")
     @PreAuthorize("hasRole('CUSTOMER')")
     public ResponseEntity<?> getMyDetail(Authentication authentication) {
-        System.out.println("Authorities: " + authentication.getAuthorities());
-
         String email = authentication.getName();
         Customer customer = customerService.findByEmail(email);
         if (customer == null) {
@@ -166,19 +167,40 @@ public class CustomerAuthController {
             CustomerDetailDTO emptyDto = new CustomerDetailDTO();
             emptyDto.setEmail(customer.getEmail());
             emptyDto.setFullName(customer.getFullName());
+        emptyDto.setCustomer(customer); // Thêm customer object để frontend có thể truy cập provider
+            emptyDto.setAddresses(new ArrayList<>()); // Thêm empty addresses
             return ResponseEntity.ok(emptyDto);
         }
 
-        return ResponseEntity.ok(new CustomerDetailDTO(customer));
+        CustomerDetailDTO dto = new CustomerDetailDTO();
+        dto.setId(detail.getId());
+        dto.setCustomerId(customer.getId());
+        dto.setEmail(customer.getEmail());
+        dto.setFullName(customer.getFullName());
+        dto.setPhoneNumber(detail.getPhoneNumber());
+        dto.setPoint(detail.getPoint());
+        dto.setVoucher(detail.getVoucher());
+        dto.setCustomer(customer); // Đảm bảo customer object được set để frontend có thể truy cập provider
+        
+        // Thêm danh sách địa chỉ
+        dto.setAddresses(detail.getAddresses().stream()
+                .map(this::convertAddressToDTO)
+                .collect(Collectors.toList()));
+
+        return ResponseEntity.ok(dto);
     }
 
 
     @PutMapping("/me/detail")
     @PreAuthorize("hasRole('CUSTOMER')")
     public ResponseEntity<?> updateMyDetail(
-            @RequestPart("detail") CustomerDetailDTO detailDto,
+            @RequestPart(value = "detail") CustomerDetailDTO detailDto,
             @RequestPart(value = "image", required = false) MultipartFile imageFile,
             Authentication authentication) {
+        
+        if (detailDto == null) {
+            return ResponseEntity.badRequest().body("Detail information is required");
+        }
 
         String email = authentication.getName();
         Customer customer = customerService.findByEmail(email);
@@ -195,21 +217,21 @@ public class CustomerAuthController {
 
         if (imageFile != null && !imageFile.isEmpty()) {
             try {
-                if (detail.getImageUrl() != null) {
-                    // Xử lý đúng path tới file ảnh cũ
-                    String oldImageUrl = detail.getImageUrl();
-                    // Loại bỏ dấu / đầu nếu có
-                    if (oldImageUrl.startsWith("/")) {
-                        oldImageUrl = oldImageUrl.substring(1);
-                    }
-                    Path oldImagePath = Paths.get(oldImageUrl);
-                    try {
-                        Files.deleteIfExists(oldImagePath);
-                    } catch (IOException ex) {
-                        // Nếu lỗi vẫn cho phép cập nhật thông tin, chỉ log ra cho biết
-                        ex.printStackTrace();
-                    }
-                }
+                // if (detail.getImageUrl() != null) {
+                //     // Xử lý đúng path tới file ảnh cũ
+                //     String oldImageUrl = detail.getImageUrl();
+                //     // Loại bỏ dấu / đầu nếu có
+                //     if (oldImageUrl.startsWith("/")) {
+                //         oldImageUrl = oldImageUrl.substring(1);
+                //     }
+                //     Path oldImagePath = Paths.get(oldImageUrl);
+                //     try {
+                //         Files.deleteIfExists(oldImagePath);
+                //     } catch (IOException ex) {
+                //         // Nếu lỗi vẫn cho phép cập nhật thông tin, chỉ log ra cho biết
+                //         ex.printStackTrace();
+                //     }
+                // }
 
                 String uploadDir = "uploads/customer/";
                 String fileName = UUID.randomUUID() + "_" + imageFile.getOriginalFilename();
@@ -217,7 +239,7 @@ public class CustomerAuthController {
                 Files.createDirectories(filePath.getParent());
                 Files.write(filePath, imageFile.getBytes());
 
-                detail.setImageUrl("/uploads/customer/" + fileName);
+                // detail.setImageUrl("/uploads/customer/" + fileName); // Đã loại bỏ imageUrl
 
             } catch (IOException e) {
                 e.printStackTrace();
@@ -227,10 +249,10 @@ public class CustomerAuthController {
 
 
         detail.setPhoneNumber(detailDto.getPhoneNumber());
-        detail.setAddress(detailDto.getAddress());
-        if (imageFile == null) {
-            detail.setImageUrl(detailDto.getImageUrl());
-        }
+        // detail.setAddress(detailDto.getAddress()); // Đã loại bỏ address
+        // if (imageFile == null) {
+        //     detail.setImageUrl(detailDto.getImageUrl()); // Đã loại bỏ imageUrl
+        // }
         detail.setPoint(detailDto.getPoint());
         detail.setVoucher(detailDto.getVoucher());
         customer.setFullName(detailDto.getFullName());
@@ -240,7 +262,20 @@ public class CustomerAuthController {
         customer.setCustomerDetail(detail);
         customerService.save(customer);
 
-        return ResponseEntity.ok(new CustomerDetailDTO(customer));
+        CustomerDetailDTO responseDto = new CustomerDetailDTO();
+        responseDto.setId(detail.getId());
+        responseDto.setCustomerId(customer.getId());
+        responseDto.setEmail(customer.getEmail());
+        responseDto.setFullName(customer.getFullName());
+        responseDto.setPhoneNumber(detail.getPhoneNumber());
+        responseDto.setPoint(detail.getPoint());
+        responseDto.setVoucher(detail.getVoucher());
+        responseDto.setCustomer(customer); // Đảm bảo customer object được set để frontend có thể truy cập provider
+        responseDto.setAddresses(detail.getAddresses().stream()
+                .map(this::convertAddressToDTO)
+                .collect(Collectors.toList()));
+        
+        return ResponseEntity.ok(responseDto);
     }
 
 
@@ -255,21 +290,34 @@ public class CustomerAuthController {
         }
         CustomerDetail detail = customer.getCustomerDetail();
 
-        if (detail.getImageUrl() != null) {
-            String filePathStr = "uploads/customer" + detail.getImageUrl().replace("/uploads/customer", "");
-            Path filePath = Paths.get(filePathStr);
-            try {
-                Files.deleteIfExists(filePath);
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-        }
+        // if (detail.getImageUrl() != null) {
+        //     String filePathStr = "uploads/customer" + detail.getImageUrl().replace("/uploads/customer", "");
+        //     Path filePath = Paths.get(filePathStr);
+        //     try {
+        //         Files.deleteIfExists(filePath);
+        //     } catch (IOException e) {
+        //         e.printStackTrace();
+        //     }
+        // }
 
         customer.setCustomerDetail(null);
         customerService.save(customer);
         customerDetailRepository.delete(detail);
 
         return ResponseEntity.ok("Customer detail deleted");
+    }
+    
+    private CustomerAddressDTO convertAddressToDTO(CustomerAddress address) {
+        CustomerAddressDTO dto = new CustomerAddressDTO();
+        dto.setId(address.getId());
+        dto.setName(address.getName());
+        dto.setPhoneNumber(address.getPhoneNumber());
+        dto.setAddress(address.getAddress());
+        dto.setLatitude(address.getLatitude());
+        dto.setLongitude(address.getLongitude());
+        dto.setNote(address.getNote());
+        dto.setIsDefault(address.getIsDefault());
+        return dto;
     }
 
     @PostMapping("/forgot-password")

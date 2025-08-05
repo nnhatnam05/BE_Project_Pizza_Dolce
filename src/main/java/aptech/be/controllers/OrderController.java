@@ -4,6 +4,10 @@ import aptech.be.dto.*;
 import aptech.be.models.*;
 import aptech.be.repositories.*;
 import aptech.be.services.PayOSService;
+import aptech.be.services.AddressValidationService;
+import aptech.be.services.EmailService;
+import aptech.be.services.VoucherService;
+import aptech.be.services.InvoiceEmailService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.transaction.Transactional;
 import org.json.JSONObject;
@@ -37,6 +41,84 @@ public class OrderController {
     private OrderStatusHistoryRepository orderStatusHistoryRepository;
     @Autowired
     private PayOSService payOSService;
+    
+    @Autowired
+    private AddressValidationService addressValidationService;
+    
+    @Autowired
+    private CustomerDetailRepository customerDetailRepository;
+    
+    @Autowired
+    private EmailService emailService;
+    
+    @Autowired
+    private VoucherService voucherService;
+    
+    @Autowired
+    private InvoiceEmailService invoiceEmailService;
+
+    // Helper method to add points to customer
+    private int addPointsToCustomer(OrderEntity order) {
+        try {
+            Customer customer = order.getCustomer();
+            if (customer != null && customer.getCustomerDetail() != null) {
+                CustomerDetail customerDetail = customer.getCustomerDetail();
+                
+                // Calculate points: 10$ = 10 points (round down)
+                double totalPrice = order.getTotalPrice();
+                int pointsToAdd = (int) Math.floor(totalPrice / 10.0) * 10;
+                
+                // Get current points
+                String currentPointsStr = customerDetail.getPoint();
+                int currentPoints = 0;
+                if (currentPointsStr != null && !currentPointsStr.isEmpty()) {
+                    try {
+                        currentPoints = Integer.parseInt(currentPointsStr);
+                    } catch (NumberFormatException e) {
+                        currentPoints = 0;
+                    }
+                }
+                
+                // Add new points
+                int newPoints = currentPoints + pointsToAdd;
+                customerDetail.setPoint(String.valueOf(newPoints));
+                
+                // Save customer detail
+                customerDetailRepository.save(customerDetail);
+                
+                System.out.println("[POINTS] Added " + pointsToAdd + " points to customer " + customer.getId() + 
+                                 ". Total points: " + newPoints + " (Order total: $" + totalPrice + ")");
+                
+                return pointsToAdd;
+            }
+        } catch (Exception e) {
+            System.err.println("[POINTS ERROR] Failed to add points: " + e.getMessage());
+            e.printStackTrace();
+        }
+        return 0;
+    }
+
+    // Helper method to send payment success email
+    private void sendPaymentSuccessEmail(OrderEntity order, int pointsEarned) {
+        try {
+            Customer customer = order.getCustomer();
+            if (customer != null && customer.getEmail() != null && !customer.getEmail().isEmpty()) {
+                emailService.sendPaymentSuccessEmail(customer.getEmail(), order, pointsEarned);
+                System.out.println("[EMAIL] Payment success email queued for: " + customer.getEmail());
+                
+                // Gửi hóa đơn điện tử nếu khách hàng yêu cầu
+                if (order.getNeedInvoice() != null && order.getNeedInvoice()) {
+                    invoiceEmailService.sendInvoiceEmail(order);
+                    System.out.println("[INVOICE] Electronic invoice processing initiated for: " + customer.getEmail());
+                }
+            } else {
+                System.out.println("[EMAIL] No email address found for customer: " + (customer != null ? customer.getId() : "null"));
+            }
+        } catch (Exception e) {
+            System.err.println("[EMAIL ERROR] Failed to send payment success email: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
 
     @GetMapping
     public List<OrderResponseDTO> getAllOrders() {
@@ -61,6 +143,8 @@ public class OrderController {
 
         Optional<OrderEntity> existingOrder = orderRepository
                 .findFirstByCustomerAndConfirmStatus(customer, "WAITING_PAYMENT");
+
+
         if (existingOrder.isPresent()) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
@@ -70,6 +154,22 @@ public class OrderController {
         // Validate đầu vào
         if (orderDto.getFoods() == null || orderDto.getFoods().isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Danh sách món ăn không được để trống!");
+        }
+        
+        // THÊM VALIDATION CHO ĐỊA CHỈ
+        if (orderDto.getDeliveryAddress() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Delivery address is required!");
+        }
+        
+        AddressSelectionDTO addressDto = orderDto.getDeliveryAddress();
+        
+        // Validate địa chỉ HCM
+        if (!addressValidationService.validateHoChiMinhCityAddress(
+                addressDto.getDeliveryAddress(), 
+                addressDto.getLatitude(), 
+                addressDto.getLongitude())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
+                "Delivery address must be within Ho Chi Minh City!");
         }
         for (FoodOrderItemDTO item : orderDto.getFoods()) {
             if (item.getQuantity() == null || item.getQuantity() <= 0) {
@@ -107,10 +207,55 @@ public class OrderController {
         }
         order.setOrderFoods(orderFoods);
 
+        // Xử lý voucher nếu có
+        double finalTotal = total;
+        if (orderDto.getVoucherCode() != null && !orderDto.getVoucherCode().trim().isEmpty()) {
+            try {
+                System.out.println("[VOUCHER] Processing voucher: " + orderDto.getVoucherCode() + " for customer: " + customer.getId());
+                System.out.println("[VOUCHER] Order total before voucher: $" + total);
+                
+                // Validate voucher
+                Map<String, Object> voucherResult = voucherService.validateVoucherForOrder(
+                    orderDto.getVoucherCode(), 
+                    customer.getId(), 
+                    total + 5.0 // Include shipping fee
+                );
+                
+                if ((Boolean) voucherResult.get("valid")) {
+                    Double discount = (Double) voucherResult.get("discount");
+                    order.setVoucherCode(orderDto.getVoucherCode());
+                    order.setVoucherDiscount(discount);
+                    finalTotal = Math.max(0, total - discount);
+                    
+                    System.out.println("[VOUCHER] Voucher applied successfully!");
+                    System.out.println("[VOUCHER] Discount amount: $" + discount);
+                    System.out.println("[VOUCHER] Final total after discount: $" + finalTotal);
+                    
+                    // Mark voucher as used
+                    voucherService.markVoucherAsUsed(orderDto.getVoucherCode(), customer.getId());
+                } else {
+                    System.out.println("[VOUCHER] Voucher validation failed: " + voucherResult.get("message"));
+                }
+            } catch (Exception e) {
+                // Log error but don't fail the order
+                System.err.println("[VOUCHER ERROR] Voucher validation failed: " + e.getMessage());
+                e.printStackTrace();
+            }
+        }
+
+        order.setTotalPrice(finalTotal);
+        
+        // LƯU THÔNG TIN ĐỊA CHỈ VÀO ORDER
+        order.setDeliveryLatitude(addressDto.getLatitude());
+        order.setDeliveryLongitude(addressDto.getLongitude());
+        order.setDeliveryAddress(addressDto.getDeliveryAddress());
+        order.setRecipientName(addressDto.getRecipientName());
+        order.setRecipientPhone(addressDto.getRecipientPhone());
         order.setNote(orderDto.getNote() != null ? orderDto.getNote() : "");
-        order.setTotalPrice(total);
-        if (total <= 0) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Tổng tiền đơn hàng phải lớn hơn 0!");
+        order.setNeedInvoice(orderDto.getNeedInvoice() != null ? orderDto.getNeedInvoice() : false);
+        order.setInvoiceSent(false);
+        if (total < 15) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Tổng tiền đơn hàng tối thiểu là 15 USD!");
         }
 
         Random random = new Random();
@@ -228,6 +373,26 @@ public class OrderController {
 
         order.setTotalPrice(total);
 
+        // Validate và cập nhật địa chỉ giao hàng
+        if (orderDto.getDeliveryAddress() != null) {
+            AddressSelectionDTO addressDto = orderDto.getDeliveryAddress();
+            
+            // Validate địa chỉ HCM
+            if (!addressValidationService.validateHoChiMinhCityAddress(
+                    addressDto.getDeliveryAddress(), 
+                    addressDto.getLatitude(), 
+                    addressDto.getLongitude())) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
+                    "Delivery address must be within Ho Chi Minh City!");
+            }
+            
+            order.setDeliveryLatitude(addressDto.getLatitude());
+            order.setDeliveryLongitude(addressDto.getLongitude());
+            order.setDeliveryAddress(addressDto.getDeliveryAddress());
+            order.setRecipientName(addressDto.getRecipientName());
+            order.setRecipientPhone(addressDto.getRecipientPhone());
+        }
+        
         // Sửa ghi chú (nếu truyền lên)
         if (orderDto.getNote() != null) {
             order.setNote(orderDto.getNote());
@@ -282,6 +447,17 @@ public class OrderController {
         dto.setRejectReason(order.getRejectReason());
         dto.setDeliveryStatus(order.getDeliveryStatus());
         dto.setDeliveryNote(order.getDeliveryNote());
+        
+        // THÊM THÔNG TIN VOUCHER
+        dto.setVoucherCode(order.getVoucherCode());
+        dto.setVoucherDiscount(order.getVoucherDiscount());
+        
+                // THÊM THÔNG TIN ĐỊA CHỈ GIAO HÀNG
+        dto.setDeliveryLatitude(order.getDeliveryLatitude());
+        dto.setDeliveryLongitude(order.getDeliveryLongitude());
+        dto.setDeliveryAddress(order.getDeliveryAddress());
+        dto.setRecipientName(order.getRecipientName());
+        dto.setRecipientPhone(order.getRecipientPhone());
 
         // Chỉnh lại: foods kèm quantity
         dto.setFoodList(order.getOrderFoods().stream().map(orderFood -> {
@@ -303,8 +479,8 @@ public class OrderController {
             customerDTO.setEmail(customer.getEmail());
             if (customer.getCustomerDetail() != null) {
                 customerDTO.setPhoneNumber(customer.getCustomerDetail().getPhoneNumber());
-                customerDTO.setAddress(customer.getCustomerDetail().getAddress());
-                customerDTO.setImageUrl(customer.getCustomerDetail().getImageUrl());
+                // customerDTO.setAddress(customer.getCustomerDetail().getAddress()); // Đã loại bỏ
+                // customerDTO.setImageUrl(customer.getCustomerDetail().getImageUrl()); // Đã loại bỏ
                 customerDTO.setPoint(customer.getCustomerDetail().getPoint());
                 customerDTO.setVoucher(customer.getCustomerDetail().getVoucher());
             }
@@ -529,7 +705,7 @@ public class OrderController {
 
         if (customer.getCustomerDetail() != null) {
             buyerPhone = customer.getCustomerDetail().getPhoneNumber() != null ? customer.getCustomerDetail().getPhoneNumber() : "";
-            buyerAddress = customer.getCustomerDetail().getAddress() != null ? customer.getCustomerDetail().getAddress() : "";
+            // buyerAddress = customer.getCustomerDetail().getAddress() != null ? customer.getCustomerDetail().getAddress() : ""; // Đã loại bỏ
         }
 
         Double totalPriceUSD = order.getTotalPrice();
@@ -637,6 +813,13 @@ public class OrderController {
                 order.setDeliveryStatus("PREPARING");
             orderRepository.save(order);
             addOrderStatusHistory(order, "PAID", "Thanh toán thành công qua PayOS", "system");
+                
+                // Add points to customer
+                int pointsAdded = addPointsToCustomer(order);
+                
+                // Send payment success email
+                sendPaymentSuccessEmail(order, pointsAdded);
+                
                 System.out.println("[PAYOS WEBHOOK] Order " + order.getId() + " status updated to PAID");
             } else {
                 System.out.println("[PAYOS WEBHOOK] Payment failed, updating order status to FAILED");
@@ -698,6 +881,13 @@ public class OrderController {
                     order.setDeliveryStatus("PREPARING");
                     orderRepository.save(order);
                     addOrderStatusHistory(order, "PAID", "Thanh toán thành công qua PayOS Return URL", "system");
+                    
+                    // Add points to customer
+                    int pointsAdded = addPointsToCustomer(order);
+                    
+                    // Send payment success email
+                    sendPaymentSuccessEmail(order, pointsAdded);
+                    
                     System.out.println("[PAYOS RETURN] Order status updated successfully");
                 } else {
                     System.out.println("[PAYOS RETURN] No matching order found for orderCode: " + orderCode);
@@ -897,6 +1087,12 @@ public class OrderController {
                 order.setDeliveryStatus("PREPARING");
                 orderRepository.save(order);
                 addOrderStatusHistory(order, "PAID", "Manual update - Thanh toán thành công", "system");
+                
+                // Add points to customer
+                int pointsAdded = addPointsToCustomer(order);
+                
+                // Send payment success email
+                sendPaymentSuccessEmail(order, pointsAdded);
             }
             
             Map<String, String> response = new HashMap<>();
@@ -947,6 +1143,13 @@ public class OrderController {
             order.setDeliveryStatus("PREPARING");
             orderRepository.save(order);
                 addOrderStatusHistory(order, "PAID", "Force update - Thanh toán thành công", "system");
+                
+                // Add points to customer
+                int pointsAdded = addPointsToCustomer(order);
+                
+                // Send payment success email
+                sendPaymentSuccessEmail(order, pointsAdded);
+                
                 System.out.println("[FORCE UPDATE] Order " + order.getId() + " updated to PAID");
             }
             
@@ -964,6 +1167,66 @@ public class OrderController {
             return ResponseEntity.ok(response);
         }
     }
+    
+    @GetMapping("/test-order-data/{id}")
+    public ResponseEntity<Map<String, Object>> testOrderData(@PathVariable Long id) {
+        OrderEntity order = orderRepository.findById(id).orElse(null);
+        if (order == null) {
+            return ResponseEntity.notFound().build();
+        }
+        
+        Map<String, Object> data = new HashMap<>();
+        data.put("orderId", order.getId());
+        data.put("customerId", order.getCustomer() != null ? order.getCustomer().getId() : null);
+        data.put("customerFullName", order.getCustomer() != null ? order.getCustomer().getFullName() : null);
+        data.put("customerEmail", order.getCustomer() != null ? order.getCustomer().getEmail() : null);
+        data.put("customerDetailPhone", order.getCustomer() != null && order.getCustomer().getCustomerDetail() != null ? 
+                order.getCustomer().getCustomerDetail().getPhoneNumber() : null);
+        data.put("deliveryAddress", order.getDeliveryAddress());
+        data.put("recipientName", order.getRecipientName());
+        data.put("recipientPhone", order.getRecipientPhone());
+        
+        return ResponseEntity.ok(data);
+    }
 
+    // API to get points earned from an order
+    @GetMapping("/{orderId}/points-earned")
+    @PreAuthorize("hasRole('CUSTOMER')")
+    public ResponseEntity<Map<String, Object>> getPointsEarned(@PathVariable Long orderId, Authentication authentication) {
+        try {
+            OrderEntity order = orderRepository.findById(orderId)
+                    .orElseThrow(() -> new RuntimeException("Order not found"));
+            
+            // Verify order belongs to current customer
+            String currentUserEmail = authentication.getName();
+            if (!order.getCustomer().getEmail().equals(currentUserEmail)) {
+                throw new RuntimeException("Access denied");
+            }
+            
+            Map<String, Object> response = new HashMap<>();
+            
+            if ("PAID".equals(order.getStatus())) {
+                // Calculate points earned: 10$ = 10 points (round down)
+                double totalPrice = order.getTotalPrice();
+                int pointsEarned = (int) Math.floor(totalPrice / 10.0) * 10;
+                
+                response.put("pointsEarned", pointsEarned);
+                response.put("orderTotal", totalPrice);
+                response.put("isPaid", true);
+                response.put("message", "Congratulations! You earned " + pointsEarned + " points from this order!");
+            } else {
+                response.put("pointsEarned", 0);
+                response.put("orderTotal", order.getTotalPrice());
+                response.put("isPaid", false);
+                response.put("message", "Points will be added when payment is completed");
+            }
+            
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            Map<String, Object> errorResponse = new HashMap<>();
+            errorResponse.put("error", e.getMessage());
+            return ResponseEntity.badRequest().body(errorResponse);
+        }
+    }
 
 }

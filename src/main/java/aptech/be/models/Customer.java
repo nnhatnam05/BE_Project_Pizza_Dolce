@@ -17,6 +17,7 @@ public class Customer {
     private String password;
     private String role;
 
+
     @OneToOne(mappedBy = "customer")
     @JsonManagedReference
     private CustomerDetail customerDetail;

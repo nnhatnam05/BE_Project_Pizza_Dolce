@@ -5,7 +5,6 @@ public class CustomerDTO {
     private String fullName;
     private String email;
     private String phoneNumber;
-    private String address;
     private String imageUrl;
     private String voucher;
     private String point;
@@ -40,14 +39,6 @@ public class CustomerDTO {
 
     public void setPhoneNumber(String phoneNumber) {
         this.phoneNumber = phoneNumber;
-    }
-
-    public String getAddress() {
-        return address;
-    }
-
-    public void setAddress(String address) {
-        this.address = address;
     }
 
     public String getImageUrl() {

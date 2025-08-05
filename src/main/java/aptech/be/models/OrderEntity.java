@@ -1,6 +1,7 @@
 package aptech.be.models;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.annotation.JsonManagedReference;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
@@ -26,6 +27,7 @@ public class OrderEntity {
 
 
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
+    @JsonManagedReference
     private List<OrderFood> orderFoods = new ArrayList<>();
 
 
@@ -44,7 +46,21 @@ public class OrderEntity {
     @JoinColumn(name = "payment_method_id")
     private PaymentMethod paymentMethod;
 
+    // Table relationship for dine-in orders
+    @ManyToOne
+    @JoinColumn(name = "table_id")
+    private TableEntity table;
+
+    private String orderType; // DELIVERY, DINE_IN
     private String note; //Ghi chú từ khách hàng
+
+    // Voucher information
+    private String voucherCode; // Mã voucher được áp dụng
+    private Double voucherDiscount; // Số tiền giảm giá từ voucher
+
+    // Invoice information
+    private Boolean needInvoice; // Khách hàng có muốn xuất hóa đơn không
+    private Boolean invoiceSent; // Đã gửi hóa đơn chưa
 
     private String confirmStatus; // WAITING_PAYMENT, CONFIRMED, REJECTED
     private String rejectReason;  // Lý do từ chối nếu có
@@ -52,6 +68,21 @@ public class OrderEntity {
 
     private String deliveryStatus; // e.g. null, DELIVERING, DELIVERED, CANCELLED
     private String deliveryNote;   // Ghi chú cập nhật của staff (nếu có)
+
+    @ManyToOne
+    @JoinColumn(name = "shipper_id")
+    private UserEntity shipper;
+
+    private LocalDateTime assignedAt; // Thời gian giao cho shipper
+    private LocalDateTime pickedUpAt; // Thời gian shipper nhận hàng
+    private LocalDateTime deliveredAt; // Thời gian giao thành công
+    private Double deliveryLatitude; // Vị trí giao hàng thực tế
+    private Double deliveryLongitude;
+
+    // Thông tin địa chỉ giao hàng
+    private String deliveryAddress; // Địa chỉ giao hàng
+    private String recipientName;   // Tên người nhận
+    private String recipientPhone;  // SĐT người nhận
 
 
 
@@ -157,5 +188,125 @@ public class OrderEntity {
 
     public void setNote(String note) {
         this.note = note;
+    }
+
+    public UserEntity getShipper() {
+        return shipper;
+    }
+
+    public void setShipper(UserEntity shipper) {
+        this.shipper = shipper;
+    }
+
+    public LocalDateTime getAssignedAt() {
+        return assignedAt;
+    }
+
+    public void setAssignedAt(LocalDateTime assignedAt) {
+        this.assignedAt = assignedAt;
+    }
+
+    public LocalDateTime getPickedUpAt() {
+        return pickedUpAt;
+    }
+
+    public void setPickedUpAt(LocalDateTime pickedUpAt) {
+        this.pickedUpAt = pickedUpAt;
+    }
+
+    public LocalDateTime getDeliveredAt() {
+        return deliveredAt;
+    }
+
+    public void setDeliveredAt(LocalDateTime deliveredAt) {
+        this.deliveredAt = deliveredAt;
+    }
+
+    public Double getDeliveryLatitude() {
+        return deliveryLatitude;
+    }
+
+    public void setDeliveryLatitude(Double deliveryLatitude) {
+        this.deliveryLatitude = deliveryLatitude;
+    }
+
+    public Double getDeliveryLongitude() {
+        return deliveryLongitude;
+    }
+
+    public void setDeliveryLongitude(Double deliveryLongitude) {
+        this.deliveryLongitude = deliveryLongitude;
+    }
+
+    public String getDeliveryAddress() {
+        return deliveryAddress;
+    }
+
+    public void setDeliveryAddress(String deliveryAddress) {
+        this.deliveryAddress = deliveryAddress;
+    }
+
+    public String getRecipientName() {
+        return recipientName;
+    }
+
+    public void setRecipientName(String recipientName) {
+        this.recipientName = recipientName;
+    }
+
+    public String getRecipientPhone() {
+        return recipientPhone;
+    }
+
+    public void setRecipientPhone(String recipientPhone) {
+        this.recipientPhone = recipientPhone;
+    }
+
+    public String getVoucherCode() {
+        return voucherCode;
+    }
+
+    public void setVoucherCode(String voucherCode) {
+        this.voucherCode = voucherCode;
+    }
+
+    public Double getVoucherDiscount() {
+        return voucherDiscount;
+    }
+
+    public void setVoucherDiscount(Double voucherDiscount) {
+        this.voucherDiscount = voucherDiscount;
+    }
+
+    public Boolean getNeedInvoice() {
+        return needInvoice;
+    }
+
+    public void setNeedInvoice(Boolean needInvoice) {
+        this.needInvoice = needInvoice;
+    }
+
+    public Boolean getInvoiceSent() {
+        return invoiceSent;
+    }
+
+    public void setInvoiceSent(Boolean invoiceSent) {
+        this.invoiceSent = invoiceSent;
+    }
+
+    public TableEntity getTable() {
+        return table;
+    }
+
+    public void setTable(TableEntity table) {
+        this.table = table;
+    }
+
+    public String getOrderType() {
+        return orderType;
+    }
+
+    public void setOrderType(String orderType) {
+        this.orderType = orderType;
     }
 }

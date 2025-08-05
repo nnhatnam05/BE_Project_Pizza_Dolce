@@ -2,12 +2,14 @@ package aptech.be.controllers;
 
 import aptech.be.models.TableEntity;
 import aptech.be.repositories.TableRepository;
+import aptech.be.services.TableService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 @RestController
@@ -16,6 +18,9 @@ import java.util.Optional;
 public class TableController {
     @Autowired
     private TableRepository tableRepository;
+    
+    @Autowired
+    private TableService tableService;
 
     @GetMapping
     public List<TableEntity> getAllTables() {
@@ -76,6 +81,50 @@ public class TableController {
     public TableEntity getTableById(@PathVariable Long id) {
         return tableRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Table not found"));
+    }
+    
+    // New endpoints for QR code and enhanced table management
+    
+    @GetMapping("/{id}/qr-code")
+    public ResponseEntity<?> getTableQRCode(@PathVariable Long id) {
+        try {
+            String qrCode = tableService.getTableQRCode(id);
+            return ResponseEntity.ok(Map.of("qrCode", qrCode));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("Error getting QR code: " + e.getMessage());
+        }
+    }
+    
+    @PostMapping("/{id}/regenerate-qr")
+    public ResponseEntity<?> regenerateQRCode(@PathVariable Long id) {
+        try {
+            tableService.regenerateQRCode(id);
+            String newQrCode = tableService.getTableQRCode(id);
+            return ResponseEntity.ok(Map.of("qrCode", newQrCode, "message", "QR code regenerated successfully"));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("Error regenerating QR code: " + e.getMessage());
+        }
+    }
+    
+    @PutMapping("/{id}/status")
+    public ResponseEntity<?> updateTableStatus(@PathVariable Long id, @RequestBody Map<String, String> request) {
+        try {
+            String status = request.get("status");
+            TableEntity updatedTable = tableService.updateTableStatus(id, status);
+            return ResponseEntity.ok(updatedTable);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("Error updating table status: " + e.getMessage());
+        }
+    }
+    
+    @GetMapping("/available")
+    public List<TableEntity> getAvailableTables() {
+        return tableService.getAvailableTables();
+    }
+    
+    @GetMapping("/occupied")
+    public List<TableEntity> getOccupiedTables() {
+        return tableService.getOccupiedTables();
     }
 
 }

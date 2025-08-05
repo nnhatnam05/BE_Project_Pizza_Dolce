@@ -1,5 +1,6 @@
 package aptech.be.models;
 
+import aptech.be.models.shipper.ShipperProfile;
 import aptech.be.models.staff.StaffProfile;
 import com.fasterxml.jackson.annotation.JsonManagedReference;
 import jakarta.persistence.*;
@@ -25,11 +26,15 @@ public class UserEntity {
     private String email;
     private String phone;
     private String imageUrl;
-    private String role;
+    private String role; // ADMIN, STAFF, SHIPPER
 
     @OneToOne(mappedBy = "user", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     @JsonManagedReference
     private StaffProfile staffProfile;
+
+    @OneToOne(mappedBy = "user", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @JsonManagedReference
+    private ShipperProfile shipperProfile;
 
 
     public Long getId() {
@@ -102,5 +107,13 @@ public class UserEntity {
 
     public void setStaffProfile(StaffProfile staffProfile) {
         this.staffProfile = staffProfile;
+    }
+
+    public ShipperProfile getShipperProfile() {
+        return shipperProfile;
+    }
+
+    public void setShipperProfile(ShipperProfile shipperProfile) {
+        this.shipperProfile = shipperProfile;
     }
 }

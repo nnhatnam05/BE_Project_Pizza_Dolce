@@ -1,7 +1,11 @@
 package aptech.be.models;
 
 import com.fasterxml.jackson.annotation.JsonBackReference;
+import com.fasterxml.jackson.annotation.JsonManagedReference;
 import jakarta.persistence.*;
+
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Table(name = "customerdetails")
@@ -11,8 +15,8 @@ public class CustomerDetail {
 
     private Long id;
     private String phoneNumber;
-    private String address;
-    private String imageUrl;
+    // private String address; // Đã loại bỏ, thay bằng addresses list
+//    private String imageUrl;
     private String point;
     private String voucher;
 
@@ -20,6 +24,19 @@ public class CustomerDetail {
     @JoinColumn(name = "customer_id")
     @JsonBackReference
     private Customer customer;
+
+    // THÊM RELATIONSHIP MỚI
+    @OneToMany(mappedBy = "customerDetail", cascade = CascadeType.ALL, orphanRemoval = true)
+    @JsonManagedReference
+    private List<CustomerAddress> addresses = new ArrayList<>();
+
+    public List<CustomerAddress> getAddresses() {
+        return addresses;
+    }
+
+    public void setAddresses(List<CustomerAddress> addresses) {
+        this.addresses = addresses;
+    }
 
     public Long getId() {
         return id;
@@ -37,21 +54,21 @@ public class CustomerDetail {
         this.phoneNumber = phoneNumber;
     }
 
-    public String getAddress() {
-        return address;
-    }
+    // public String getAddress() {
+    //     return address;
+    // }
 
-    public void setAddress(String address) {
-        this.address = address;
-    }
+    // public void setAddress(String address) {
+    //     this.address = address;
+    // }
 
-    public String getImageUrl() {
-        return imageUrl;
-    }
-
-    public void setImageUrl(String imageUrl) {
-        this.imageUrl = imageUrl;
-    }
+//    public String getImageUrl() {
+//        return imageUrl;
+//    }
+//
+//    public void setImageUrl(String imageUrl) {
+//        this.imageUrl = imageUrl;
+//    }
 
     public String getPoint() {
         return point;

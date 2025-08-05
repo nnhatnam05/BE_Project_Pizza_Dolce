@@ -22,6 +22,17 @@ public class OrderResponseDTO {
     private String deliveryStatus;
     private String deliveryNote;
 
+    // Voucher information
+    private String voucherCode;
+    private Double voucherDiscount;
+
+    // Thêm thông tin địa chỉ giao hàng
+    private String deliveryAddress;
+    private String recipientName;
+    private String recipientPhone;
+    private Double deliveryLatitude;
+    private Double deliveryLongitude;
+
     private List<OrderStatusHistoryDTO> statusHistory;
 
     public Long getId() {
@@ -126,5 +137,62 @@ public class OrderResponseDTO {
 
     public void setNote(String note) {
         this.note = note;
+    }
+
+    // Getters và setters cho địa chỉ giao hàng
+    public String getDeliveryAddress() {
+        return deliveryAddress;
+    }
+
+    public void setDeliveryAddress(String deliveryAddress) {
+        this.deliveryAddress = deliveryAddress;
+    }
+
+    public String getRecipientName() {
+        return recipientName;
+    }
+
+    public void setRecipientName(String recipientName) {
+        this.recipientName = recipientName;
+    }
+
+    public String getRecipientPhone() {
+        return recipientPhone;
+    }
+
+    public void setRecipientPhone(String recipientPhone) {
+        this.recipientPhone = recipientPhone;
+    }
+
+    public Double getDeliveryLatitude() {
+        return deliveryLatitude;
+    }
+
+    public void setDeliveryLatitude(Double deliveryLatitude) {
+        this.deliveryLatitude = deliveryLatitude;
+    }
+
+    public Double getDeliveryLongitude() {
+        return deliveryLongitude;
+    }
+
+    public void setDeliveryLongitude(Double deliveryLongitude) {
+        this.deliveryLongitude = deliveryLongitude;
+    }
+
+    public String getVoucherCode() {
+        return voucherCode;
+    }
+
+    public void setVoucherCode(String voucherCode) {
+        this.voucherCode = voucherCode;
+    }
+
+    public Double getVoucherDiscount() {
+        return voucherDiscount;
+    }
+
+    public void setVoucherDiscount(Double voucherDiscount) {
+        this.voucherDiscount = voucherDiscount;
     }
 }

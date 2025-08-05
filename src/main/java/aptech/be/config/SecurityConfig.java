@@ -113,9 +113,34 @@ public class SecurityConfig {
         return http.build();
     }
 
-
     @Bean
     @Order(3)
+    public SecurityFilterChain dineInPublicChain(HttpSecurity http) throws Exception {
+        http
+                .securityMatcher(request -> {
+                    String path = request.getServletPath();
+                    return path.startsWith("/api/tables/") 
+                        || path.equals("/api/tables")
+                        || path.equals("/api/categories")
+                        || path.startsWith("/api/order/table/")
+                        || path.matches("/api/dinein/table/\\d+")
+                        || path.matches("/api/dinein/table/\\d+/current-order")
+                        || path.matches("/api/dinein/table/\\d+/session")
+                        || path.matches("/api/dinein/table/\\d+/call-staff")
+                        || path.matches("/api/dinein/table/\\d+/request-payment")
+                        || path.startsWith("/api/dinein/orders/create")
+                        || path.equals("/api/dinein/order")
+                        || path.matches("/api/dinein/table/\\d+/add-items")
+                        || path.matches("/api/dinein/table/\\d+/end-session");
+                })
+                .csrf(csrf -> csrf.disable())
+                .cors(cors -> {})
+                .authorizeHttpRequests(auth -> auth.anyRequest().permitAll());
+        return http.build();
+    }
+
+    @Bean
+    @Order(4)
     public SecurityFilterChain customerFilterChain(HttpSecurity http) throws Exception {
         http
                 .securityMatcher(request -> {
@@ -141,13 +166,16 @@ public class SecurityConfig {
                         .requestMatchers(
                                 "/api/customer/me/detail",
                                 "/api/customer/change-password",
+                                "/api/customer/addresses/**",
+                                "/api/customer/vouchers/**",
                                 "/api/orders/create",
                                 "/api/orders/cancel/**",
                                 "/api/orders/update/**",
                                 "/api/orders/myorder",
                                 "/api/orders/my/waiting-confirm",
                                 "/api/orders/my/*/delivery-status",
-                                "/api/orders/my/**"
+                                "/api/orders/my/**",
+                                "/api/orders/*/points-earned"
                         ).hasAuthority("ROLE_CUSTOMER")
 
                         // Nếu có cho customer xem detail đơn hàng riêng mình, giữ rule này (trong controller đã kiểm tra chủ đơn)
@@ -169,7 +197,7 @@ public class SecurityConfig {
 
 
     @Bean
-    @Order(4)
+    @Order(5)
     public SecurityFilterChain adminStaffFilterChain(HttpSecurity http) throws Exception {
         http
                 .securityMatcher(request -> {
@@ -177,6 +205,7 @@ public class SecurityConfig {
                     // Exclude /api/auth/login khỏi matcher này!
                     return (path.startsWith("/api/admin/")
                             || path.startsWith("/api/staff/")
+                            || path.startsWith("/api/dinein/")
                             || (path.startsWith("/api/auth/") && !path.equals("/api/auth/login"))
                             || path.startsWith("/api/attendance/")
                             || path.startsWith("/api/notification/")
@@ -200,11 +229,22 @@ public class SecurityConfig {
                         .requestMatchers("/api/foods/delete").hasAuthority("ROLE_ADMIN")
                         .requestMatchers("/api/foods/update").hasAuthority("ROLE_ADMIN")
                         .requestMatchers("/api/foods").permitAll()
+                        .requestMatchers("/api/admin/vouchers/**").hasAuthority("ROLE_ADMIN")
+                        .requestMatchers("/api/admin/vouchers/public").permitAll()
+                        .requestMatchers("/api/admin/vouchers/customers").hasAuthority("ROLE_ADMIN")
                         .requestMatchers("/api/orders/waiting-confirm").hasAnyAuthority("ROLE_ADMIN","ROLE_STAFF")
                         .requestMatchers("/api/orders/{id}/delivery-status").hasAuthority("ROLE_STAFF")
                         .requestMatchers("/api/orders/{id}/admin-confirm").hasAuthority("ROLE_ADMIN")
                         .requestMatchers("/api/attendance/face-scan").permitAll()
-
+                        
+                        // DineIn endpoints for staff dashboard
+                        .requestMatchers("/api/dinein/orders/all").hasAnyAuthority("ROLE_ADMIN", "ROLE_STAFF")
+                        .requestMatchers("/api/dinein/orders/*/status").hasAnyAuthority("ROLE_ADMIN", "ROLE_STAFF")
+                        .requestMatchers("/api/dinein/sessions/all").hasAnyAuthority("ROLE_ADMIN", "ROLE_STAFF")
+                        .requestMatchers("/api/dinein/staff-calls/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_STAFF")
+                        .requestMatchers("/api/dinein/payment-requests/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_STAFF")
+                        .requestMatchers("/api/dinein/table/*/end-session").hasAnyAuthority("ROLE_ADMIN", "ROLE_STAFF")
+                        .requestMatchers("/api/dinein/debug/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_STAFF")
 
                         .anyRequest().authenticated()
                 )
@@ -212,6 +252,21 @@ public class SecurityConfig {
                 .oauth2ResourceServer(oauth2 -> oauth2
                         .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter()))
                 );
+        return http.build();
+    }
+    @Bean
+    @Order(6)
+    public SecurityFilterChain shipperFilterChain(HttpSecurity http, JwtFilterForShipper jwtFilterForShipper) throws Exception {
+        http
+                .securityMatcher("/api/shipper/**")
+                .csrf(csrf -> csrf.disable())
+                .authorizeHttpRequests(auth -> auth
+                        .anyRequest().hasRole("SHIPPER")
+                )
+                .oauth2ResourceServer(oauth2 -> oauth2
+                        .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter()))
+                )
+                .addFilterBefore(jwtFilterForShipper, UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }
 }
