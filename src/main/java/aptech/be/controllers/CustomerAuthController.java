@@ -280,7 +280,7 @@ public class CustomerAuthController {
 
 
 
-    @DeleteMapping("/me/detail")
+    @DeleteMapping({"/me/detail", "/me/detail/"})
     @PreAuthorize("hasRole('CUSTOMER')")
     public ResponseEntity<?> deleteMyDetail(Authentication authentication) {
         String email = authentication.getName();

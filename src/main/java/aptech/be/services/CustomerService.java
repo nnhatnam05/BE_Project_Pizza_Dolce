@@ -2,7 +2,9 @@ package aptech.be.services;
 
 import aptech.be.dto.customer.CustomerSignupRequest;
 import aptech.be.models.Customer;
+import aptech.be.models.CustomerDetail;
 import aptech.be.repositories.CustomerRepository;
+import aptech.be.repositories.CustomerDetailRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -17,6 +19,9 @@ public class CustomerService {
 
     @Autowired
     private CustomerRepository customerRepository;
+    
+    @Autowired
+    private CustomerDetailRepository customerDetailRepository;
 
     @Autowired
     private PasswordEncoder passwordEncoder;
@@ -72,7 +77,11 @@ public class CustomerService {
         customer.setFullName(req.getFullName());
         customer.setEmail(req.getEmail());
         customer.setPassword(passwordEncoder.encode(req.getPassword()));
-        customerRepository.save(customer);
+        Customer savedCustomer = customerRepository.save(customer);
+        
+        // Auto-create CustomerDetail for new customer
+        createDefaultCustomerDetail(savedCustomer);
+        
         verificationCodes.remove(req.getEmail());
         return "Registration successful";
     }
@@ -140,6 +149,31 @@ public class CustomerService {
         verificationCodes.remove(email);
         sentCount.remove(email);
         return "Password reset successful";
+    }
+    
+    /**
+     * Create default CustomerDetail for new customer
+     */
+    private void createDefaultCustomerDetail(Customer customer) {
+        try {
+            CustomerDetail customerDetail = new CustomerDetail();
+            customerDetail.setCustomer(customer);
+            customerDetail.setPoint("0"); // Start with 0 points
+            customerDetail.setPhoneNumber(null); // Will be filled later
+            customerDetail.setVoucher(null); // No vouchers initially
+            
+            // Save the customer detail
+            CustomerDetail savedDetail = customerDetailRepository.save(customerDetail);
+            
+            // Update customer reference
+            customer.setCustomerDetail(savedDetail);
+            customerRepository.save(customer);
+            
+            System.out.println("[AUTO-CREATE SUCCESS] Created CustomerDetail for new customer: " + customer.getId());
+        } catch (Exception e) {
+            System.err.println("[AUTO-CREATE ERROR] Failed to create CustomerDetail for new customer: " + e.getMessage());
+            // Don't throw exception here to avoid breaking registration
+        }
     }
 
 }

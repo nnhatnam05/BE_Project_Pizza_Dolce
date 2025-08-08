@@ -17,6 +17,9 @@ public class TableService {
     @Autowired
     private QRCodeService qrCodeService;
     
+    @Autowired
+    private WebSocketNotificationService notificationService;
+    
     // Table status constants
     public static final String STATUS_AVAILABLE = "AVAILABLE";
     public static final String STATUS_OCCUPIED = "OCCUPIED";
@@ -84,7 +87,17 @@ public class TableService {
         return tableRepository.findById(id)
                 .map(table -> {
                     table.setStatus(status);
-                    return tableRepository.save(table);
+                    TableEntity savedTable = tableRepository.save(table);
+                    
+                    // Send real-time notification to staff
+                    try {
+                        notificationService.sendTableStatusUpdate(savedTable);
+                        System.out.println("Table status updated and notification sent: Table " + savedTable.getNumber() + " -> " + status);
+                    } catch (Exception e) {
+                        System.out.println("Failed to send table status notification: " + e.getMessage());
+                    }
+                    
+                    return savedTable;
                 })
                 .orElseThrow(() -> new RuntimeException("Table not found with id: " + id));
     }

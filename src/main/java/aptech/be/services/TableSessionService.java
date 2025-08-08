@@ -1,5 +1,7 @@
 package aptech.be.services;
 
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -10,31 +12,76 @@ import java.util.concurrent.ConcurrentHashMap;
 @Service
 public class TableSessionService {
     
+    @Autowired
+    private WebSocketNotificationService notificationService;
+    
     // In-memory storage for table sessions (in production, use Redis or database)
     private final Map<Long, TableSession> tableSessions = new ConcurrentHashMap<>();
     private final Map<Long, StaffCall> pendingStaffCalls = new ConcurrentHashMap<>();
     private final Map<Long, PaymentRequest> pendingPaymentRequests = new ConcurrentHashMap<>();
     
     /**
-     * Create a staff call for a table
+     * Create a staff call for a table (with table number)
      */
-    public void createStaffCall(Long tableId, String reason) {
+    public void createStaffCall(Long tableId, String reason, int tableNumber) {
         StaffCall staffCall = new StaffCall(tableId, reason, LocalDateTime.now());
         pendingStaffCalls.put(tableId, staffCall);
         
-        // In production, send real-time notification to staff dashboard
-        notifyStaff(staffCall);
+        // Send real-time notification to staff dashboard
+        notificationService.sendStaffCallNotification(tableId, reason, tableNumber);
+        
+        System.out.println("Staff call created for table " + tableId + " (Table " + tableNumber + ") at " + LocalDateTime.now());
     }
     
     /**
-     * Create a payment request for a table
+     * Create a staff call for a table (backward compatibility)
      */
-    public void createPaymentRequest(Long tableId) {
+    public void createStaffCall(Long tableId, String reason) {
+        // Default to unknown table number for backward compatibility
+        createStaffCall(tableId, reason, 0);
+    }
+    
+    /**
+     * Auto-dismiss staff calls after 1 minute
+     * Runs every 30 seconds to check for expired calls
+     */
+    @Scheduled(fixedRate = 30000) // Run every 30 seconds
+    public void autoDismissExpiredStaffCalls() {
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime oneMinuteAgo = now.minusMinutes(1);
+        
+        pendingStaffCalls.entrySet().removeIf(entry -> {
+            StaffCall call = entry.getValue();
+            if (call.getCallTime().isBefore(oneMinuteAgo)) {
+                System.out.println("Auto-dismissing expired staff call for table " + entry.getKey() + 
+                                 " (created at " + call.getCallTime() + ")");
+                
+                // TODO: Send notification to remove the call from staff dashboard
+                // notificationService.sendStaffCallDismissed(entry.getKey());
+                
+                return true; // Remove this entry
+            }
+            return false; // Keep this entry
+        });
+    }
+    
+    /**
+     * Create a payment request for a table (with table number)
+     */
+    public void createPaymentRequest(Long tableId, int tableNumber) {
         PaymentRequest paymentRequest = new PaymentRequest(tableId, LocalDateTime.now());
         pendingPaymentRequests.put(tableId, paymentRequest);
         
-        // In production, send real-time notification to staff dashboard
-        notifyStaffForPayment(paymentRequest);
+        // Send real-time notification to staff dashboard
+        notificationService.sendPaymentRequestNotification(tableId, tableNumber);
+    }
+    
+    /**
+     * Create a payment request for a table (backward compatibility)
+     */
+    public void createPaymentRequest(Long tableId) {
+        // Default to unknown table number for backward compatibility
+        createPaymentRequest(tableId, 0);
     }
     
     /**

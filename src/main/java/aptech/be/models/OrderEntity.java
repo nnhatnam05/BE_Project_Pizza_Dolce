@@ -30,6 +30,20 @@ public class OrderEntity {
     @JsonManagedReference
     private List<OrderFood> orderFoods = new ArrayList<>();
 
+    // New OrderItems for dine-in orders
+    @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
+    @JsonManagedReference
+    private List<OrderItems> orderItems = new ArrayList<>();
+    
+    // Manual getter for orderItems (in case Lombok doesn't work)
+    public List<OrderItems> getOrderItems() {
+        return orderItems;
+    }
+    
+    public void setOrderItems(List<OrderItems> orderItems) {
+        this.orderItems = orderItems;
+    }
+
 
     private Double totalPrice;
 
@@ -42,9 +56,6 @@ public class OrderEntity {
     @JoinColumn(name = "customer_id")
     private Customer customer;
 
-    @ManyToOne
-    @JoinColumn(name = "payment_method_id")
-    private PaymentMethod paymentMethod;
 
     // Table relationship for dine-in orders
     @ManyToOne
@@ -140,14 +151,6 @@ public class OrderEntity {
 
     public void setCustomer(Customer customer) {
         this.customer = customer;
-    }
-
-    public PaymentMethod getPaymentMethod() {
-        return paymentMethod;
-    }
-
-    public void setPaymentMethod(PaymentMethod paymentMethod) {
-        this.paymentMethod = paymentMethod;
     }
 
     public String getConfirmStatus() {

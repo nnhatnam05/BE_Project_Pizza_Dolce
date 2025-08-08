@@ -157,4 +157,117 @@ public class EmailService {
         
         return html.toString();
     }
+
+    /**
+     * Send points earned email for dine-in claim system
+     */
+    public void sendPointsEarnedEmail(String to, int pointsEarned, Double orderTotal, int totalPoints) {
+        try {
+            MimeMessage mimeMessage = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, true, "UTF-8");
+            
+            helper.setTo(to);
+            helper.setSubject("🎁 Congratulations! You've Earned Loyalty Points!");
+            helper.setFrom("namlk0310pro@gmail.com", "DOLCE Restaurant");
+            
+            String htmlContent = createPointsEarnedEmailTemplate(pointsEarned, orderTotal, totalPoints);
+            helper.setText(htmlContent, true);
+            
+            mailSender.send(mimeMessage);
+            System.out.println("[EMAIL] Points earned email sent to: " + to);
+        } catch (Exception e) {
+            System.err.println("[EMAIL ERROR] Failed to send points earned email: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
+    private String createPointsEarnedEmailTemplate(int pointsEarned, Double orderTotal, int totalPoints) {
+        NumberFormat currencyFormat = NumberFormat.getCurrencyInstance(Locale.US);
+        
+        StringBuilder html = new StringBuilder();
+        html.append("<!DOCTYPE html>");
+        html.append("<html>");
+        html.append("<head>");
+        html.append("<meta charset='UTF-8'>");
+        html.append("<meta name='viewport' content='width=device-width, initial-scale=1.0'>");
+        html.append("<title>Points Earned - DOLCE Restaurant</title>");
+        html.append("<style>");
+        html.append("body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 20px; background-color: #f5f5f5; }");
+        html.append(".container { max-width: 600px; margin: 0 auto; background-color: white; border-radius: 10px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }");
+        html.append(".header { background: linear-gradient(135deg, #FF6B35, #F7931E); color: white; padding: 30px; text-align: center; }");
+        html.append(".header h1 { margin: 0; font-size: 28px; }");
+        html.append(".content { padding: 30px; }");
+        html.append(".points-section { background: linear-gradient(135deg, #4CAF50, #45a049); color: white; padding: 25px; border-radius: 10px; margin: 20px 0; text-align: center; }");
+        html.append(".points-section h2 { margin: 0 0 15px 0; font-size: 24px; }");
+        html.append(".points-earned { font-size: 36px; font-weight: bold; margin: 10px 0; }");
+        html.append(".order-info { background-color: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0; }");
+        html.append(".info-row { display: flex; justify-content: space-between; margin: 10px 0; padding: 5px 0; border-bottom: 1px solid #e9ecef; }");
+        html.append(".info-label { font-weight: bold; color: #495057; }");
+        html.append(".info-value { color: #212529; }");
+        html.append(".rules-section { background-color: #e3f2fd; padding: 20px; border-radius: 8px; margin: 20px 0; }");
+        html.append(".rules-section h3 { margin: 0 0 15px 0; color: #1976d2; }");
+        html.append(".footer { background-color: #343a40; color: white; padding: 20px; text-align: center; }");
+        html.append("</style>");
+        html.append("</head>");
+        html.append("<body>");
+        
+        html.append("<div class='container'>");
+        
+        // Header
+        html.append("<div class='header'>");
+        html.append("<h1>🎁 Congratulations!</h1>");
+        html.append("<p>You've earned loyalty points!</p>");
+        html.append("</div>");
+        
+        // Content
+        html.append("<div class='content'>");
+        
+        // Points Section
+        html.append("<div class='points-section'>");
+        html.append("<h2>Points Earned</h2>");
+        html.append("<div class='points-earned'>+").append(pointsEarned).append(" Points</div>");
+        html.append("<p>Thank you for dining with us!</p>");
+        html.append("</div>");
+        
+        // Order Info
+        html.append("<div class='order-info'>");
+        html.append("<h3>📋 Order Summary</h3>");
+        html.append("<div class='info-row'>");
+        html.append("<span class='info-label'>Order Total:</span>");
+        html.append("<span class='info-value'>").append(currencyFormat.format(orderTotal)).append("</span>");
+        html.append("</div>");
+        html.append("<div class='info-row'>");
+        html.append("<span class='info-label'>Points Earned:</span>");
+        html.append("<span class='info-value'>").append(pointsEarned).append(" points</span>");
+        html.append("</div>");
+        html.append("<div class='info-row'>");
+        html.append("<span class='info-label'>Your Total Points:</span>");
+        html.append("<span class='info-value'>").append(totalPoints).append(" points</span>");
+        html.append("</div>");
+        html.append("</div>");
+        
+        // Rules Section
+        html.append("<div class='rules-section'>");
+        html.append("<h3>💡 How Points Work</h3>");
+        html.append("<p><strong>Earning Rule:</strong> Every $10 spent = 10 points (rounded down)</p>");
+        html.append("<p><strong>Redemption:</strong> Use your points for discounts on future orders</p>");
+        html.append("<p><strong>Validity:</strong> Points never expire</p>");
+        html.append("</div>");
+        
+        html.append("<p>Thank you for choosing DOLCE Restaurant! We look forward to serving you again.</p>");
+        html.append("</div>");
+        
+        // Footer
+        html.append("<div class='footer'>");
+        html.append("<h3>DOLCE Restaurant</h3>");
+        html.append("<p>123 Main Street, Downtown, New York, NY 10001</p>");
+        html.append("<p>Hotline: +1-800-DOLCE</p>");
+        html.append("</div>");
+        
+        html.append("</div>");
+        html.append("</body>");
+        html.append("</html>");
+        
+        return html.toString();
+    }
 }

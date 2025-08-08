@@ -131,7 +131,12 @@ public class SecurityConfig {
                         || path.startsWith("/api/dinein/orders/create")
                         || path.equals("/api/dinein/order")
                         || path.matches("/api/dinein/table/\\d+/add-items")
-                        || path.matches("/api/dinein/table/\\d+/end-session");
+                        || path.matches("/api/dinein/table/\\d+/all-orders")
+                        || path.matches("/api/dinein/table/\\d+/summary")
+                        || path.matches("/api/dinein/table/\\d+/debug")
+                        || path.matches("/api/dinein/table/\\d+/end-session")
+                        || path.startsWith("/api/dinein/points/")
+                        || path.startsWith("/ws");
                 })
                 .csrf(csrf -> csrf.disable())
                 .cors(cors -> {})
@@ -240,9 +245,13 @@ public class SecurityConfig {
                         // DineIn endpoints for staff dashboard
                         .requestMatchers("/api/dinein/orders/all").hasAnyAuthority("ROLE_ADMIN", "ROLE_STAFF")
                         .requestMatchers("/api/dinein/orders/*/status").hasAnyAuthority("ROLE_ADMIN", "ROLE_STAFF")
+                        .requestMatchers("/api/dinein/table/*/all-orders").hasAnyAuthority("ROLE_ADMIN", "ROLE_STAFF")
+                        .requestMatchers("/api/dinein/table/*/summary").hasAnyAuthority("ROLE_ADMIN", "ROLE_STAFF")
                         .requestMatchers("/api/dinein/sessions/all").hasAnyAuthority("ROLE_ADMIN", "ROLE_STAFF")
                         .requestMatchers("/api/dinein/staff-calls/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_STAFF")
                         .requestMatchers("/api/dinein/payment-requests/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_STAFF")
+                        .requestMatchers("/api/dinein/tables/*/bill").hasAnyAuthority("ROLE_ADMIN", "ROLE_STAFF")
+                        .requestMatchers("/api/dinein/tables/*/confirm-payment").hasAnyAuthority("ROLE_ADMIN", "ROLE_STAFF")
                         .requestMatchers("/api/dinein/table/*/end-session").hasAnyAuthority("ROLE_ADMIN", "ROLE_STAFF")
                         .requestMatchers("/api/dinein/debug/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_STAFF")
 
