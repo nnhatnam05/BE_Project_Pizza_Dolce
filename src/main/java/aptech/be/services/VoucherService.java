@@ -62,6 +62,9 @@ public class VoucherService {
     
     // Tạo voucher từ CreateVoucherRequest
     public VoucherDTO createVoucher(CreateVoucherRequest request, String createdBy) {
+        // Validate voucher logic before creating
+        validateVoucherLogic(request.getType(), request.getValue(), request.getMinOrderAmount(), request.getMaxDiscountAmount());
+        
         Voucher voucher = new Voucher();
         voucher.setCode(generateVoucherCode());
         voucher.setName(request.getName());
@@ -104,6 +107,9 @@ public class VoucherService {
     
     // Cập nhật voucher từ CreateVoucherRequest
     public VoucherDTO updateVoucher(Long id, CreateVoucherRequest request) {
+        // Validate voucher logic before updating
+        validateVoucherLogic(request.getType(), request.getValue(), request.getMinOrderAmount(), request.getMaxDiscountAmount());
+        
         Voucher voucher = voucherRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Voucher not found"));
         
@@ -119,6 +125,33 @@ public class VoucherService {
         
         Voucher savedVoucher = voucherRepository.save(voucher);
         return new VoucherDTO(savedVoucher);
+    }
+    
+    // Validation method for voucher logic
+    private void validateVoucherLogic(String type, Double value, Double minOrderAmount, Double maxDiscountAmount) {
+        if ("FIXED_AMOUNT".equals(type)) {
+            // For fixed amount vouchers: minOrderAmount must be >= voucher value
+            if (minOrderAmount != null && value != null && minOrderAmount < value) {
+                throw new RuntimeException(String.format(
+                    "Logic Error: Minimum order amount ($%.2f) must be greater than or equal to voucher value ($%.2f). Otherwise customers can get negative total!",
+                    minOrderAmount, value
+                ));
+            }
+            if ((minOrderAmount == null || minOrderAmount == 0) && value != null && value > 0) {
+                throw new RuntimeException(String.format(
+                    "Logic Error: Fixed amount vouchers must have a minimum order amount that is at least equal to the voucher value ($%.2f) to prevent negative totals.",
+                    value
+                ));
+            }
+        } else if ("PERCENTAGE".equals(type)) {
+            // For percentage vouchers: if maxDiscountAmount is set, minOrderAmount should be >= maxDiscountAmount
+            if (maxDiscountAmount != null && minOrderAmount != null && minOrderAmount < maxDiscountAmount) {
+                throw new RuntimeException(String.format(
+                    "Logic Error: Minimum order amount ($%.2f) should be greater than or equal to max discount amount ($%.2f) to prevent negative totals.",
+                    minOrderAmount, maxDiscountAmount
+                ));
+            }
+        }
     }
 
     
@@ -469,5 +502,142 @@ public class VoucherService {
         Voucher voucher = customerVoucher.getVoucher();
         voucher.setUsedQuantity(voucher.getUsedQuantity() + 1);
         voucherRepository.save(voucher);
+    }
+    
+    // Tặng voucher cho top customers theo points
+    public String giveVoucherToTopCustomers(Long voucherId, int topCount) {
+        Voucher voucher = voucherRepository.findById(voucherId)
+                .orElseThrow(() -> new RuntimeException("Voucher not found"));
+        
+        if (!voucher.isAvailable()) {
+            return "Voucher is not available";
+        }
+        
+        // Get all customers sorted by points descending
+        List<Customer> allCustomers = customerRepository.findAll();
+        List<Customer> topCustomers = allCustomers.stream()
+                .filter(customer -> customer.getCustomerDetail() != null)
+                .sorted((c1, c2) -> {
+                    int points1 = getCustomerPoints(c1);
+                    int points2 = getCustomerPoints(c2);
+                    return Integer.compare(points2, points1); // Descending order
+                })
+                .limit(topCount)
+                .collect(Collectors.toList());
+        
+        int successCount = 0;
+        int skipCount = 0;
+        
+        for (Customer customer : topCustomers) {
+            try {
+                // Check if customer already has this voucher
+                if (!customerVoucherRepository.existsByCustomerAndVoucherAndIsUsedFalse(customer, voucher)) {
+                    // Check customer voucher limit
+                    Long currentVoucherCount = customerVoucherRepository.countValidVouchersByCustomerId(customer.getId(), LocalDateTime.now());
+                    if (currentVoucherCount < MAX_VOUCHERS_PER_CUSTOMER) {
+                        CustomerVoucher customerVoucher = new CustomerVoucher(customer, voucher);
+                        customerVoucherRepository.save(customerVoucher);
+                        successCount++;
+                    } else {
+                        skipCount++;
+                    }
+                } else {
+                    skipCount++;
+                }
+            } catch (Exception e) {
+                skipCount++;
+            }
+        }
+        
+        return String.format("Voucher given to %d top customers successfully. %d customers skipped.", successCount, skipCount);
+    }
+    
+    // Tặng voucher cho tất cả customers
+    public String giveVoucherToAllCustomers(Long voucherId) {
+        Voucher voucher = voucherRepository.findById(voucherId)
+                .orElseThrow(() -> new RuntimeException("Voucher not found"));
+        
+        if (!voucher.isAvailable()) {
+            return "Voucher is not available";
+        }
+        
+        List<Customer> allCustomers = customerRepository.findAll();
+        int successCount = 0;
+        int skipCount = 0;
+        
+        for (Customer customer : allCustomers) {
+            try {
+                // Check if customer already has this voucher
+                if (!customerVoucherRepository.existsByCustomerAndVoucherAndIsUsedFalse(customer, voucher)) {
+                    // Check customer voucher limit
+                    Long currentVoucherCount = customerVoucherRepository.countValidVouchersByCustomerId(customer.getId(), LocalDateTime.now());
+                    if (currentVoucherCount < MAX_VOUCHERS_PER_CUSTOMER) {
+                        CustomerVoucher customerVoucher = new CustomerVoucher(customer, voucher);
+                        customerVoucherRepository.save(customerVoucher);
+                        successCount++;
+                    } else {
+                        skipCount++;
+                    }
+                } else {
+                    skipCount++;
+                }
+            } catch (Exception e) {
+                skipCount++;
+            }
+        }
+        
+        return String.format("Voucher given to %d customers successfully. %d customers skipped.", successCount, skipCount);
+    }
+    
+    // Tặng voucher cho multiple customers
+    public String giveVoucherToMultipleCustomers(Long voucherId, List<Long> customerIds) {
+        Voucher voucher = voucherRepository.findById(voucherId)
+                .orElseThrow(() -> new RuntimeException("Voucher not found"));
+        
+        if (!voucher.isAvailable()) {
+            return "Voucher is not available";
+        }
+        
+        int successCount = 0;
+        int skipCount = 0;
+        
+        for (Long customerId : customerIds) {
+            try {
+                Customer customer = customerRepository.findById(customerId)
+                        .orElseThrow(() -> new RuntimeException("Customer not found"));
+                
+                // Check if customer already has this voucher
+                if (!customerVoucherRepository.existsByCustomerAndVoucherAndIsUsedFalse(customer, voucher)) {
+                    // Check customer voucher limit
+                    Long currentVoucherCount = customerVoucherRepository.countValidVouchersByCustomerId(customerId, LocalDateTime.now());
+                    if (currentVoucherCount < MAX_VOUCHERS_PER_CUSTOMER) {
+                        CustomerVoucher customerVoucher = new CustomerVoucher(customer, voucher);
+                        customerVoucherRepository.save(customerVoucher);
+                        successCount++;
+                    } else {
+                        skipCount++;
+                    }
+                } else {
+                    skipCount++;
+                }
+            } catch (Exception e) {
+                skipCount++;
+            }
+        }
+        
+        return String.format("Voucher given to %d customers successfully. %d customers skipped.", successCount, skipCount);
+    }
+    
+    // Helper method to get customer points
+    private int getCustomerPoints(Customer customer) {
+        if (customer.getCustomerDetail() != null) {
+            String pointStr = customer.getCustomerDetail().getPoint();
+            try {
+                return pointStr != null && !pointStr.isEmpty() ? Integer.parseInt(pointStr) : 0;
+            } catch (NumberFormatException e) {
+                return 0;
+            }
+        }
+        return 0;
     }
 } 

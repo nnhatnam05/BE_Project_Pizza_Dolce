@@ -34,6 +34,8 @@ public class OrderResponseDTO {
     private Double deliveryLongitude;
 
     private List<OrderStatusHistoryDTO> statusHistory;
+    
+    private UserDTO staff;
 
     public Long getId() {
         return id;
@@ -194,5 +196,13 @@ public class OrderResponseDTO {
 
     public void setVoucherDiscount(Double voucherDiscount) {
         this.voucherDiscount = voucherDiscount;
+    }
+
+    public UserDTO getStaff() {
+        return staff;
+    }
+
+    public void setStaff(UserDTO staff) {
+        this.staff = staff;
     }
 }

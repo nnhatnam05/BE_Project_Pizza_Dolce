@@ -188,7 +188,7 @@ public class VoucherController {
         }
     }
     
-    // Lấy danh sách customers cho admin
+    // Lấy danh sách customers cho admin với point information
     @GetMapping("/customers")
     public ResponseEntity<List<Map<String, Object>>> getCustomersForAdmin() {
         try {
@@ -200,13 +200,95 @@ public class VoucherController {
                     customerMap.put("id", customer.getId());
                     customerMap.put("fullName", customer.getFullName());
                     customerMap.put("email", customer.getEmail());
+                    
+                    // Add point information
+                    if (customer.getCustomerDetail() != null) {
+                        String pointStr = customer.getCustomerDetail().getPoint();
+                        int points = 0;
+                        try {
+                            points = pointStr != null && !pointStr.isEmpty() ? Integer.parseInt(pointStr) : 0;
+                        } catch (NumberFormatException e) {
+                            points = 0;
+                        }
+                        customerMap.put("points", points);
+                        customerMap.put("phoneNumber", customer.getCustomerDetail().getPhoneNumber());
+                    } else {
+                        customerMap.put("points", 0);
+                        customerMap.put("phoneNumber", "");
+                    }
+                    
                     return customerMap;
                 })
+                .sorted((c1, c2) -> Integer.compare((Integer) c2.get("points"), (Integer) c1.get("points"))) // Sort by points descending
                 .collect(Collectors.toList());
             
             return ResponseEntity.ok(customerList);
         } catch (Exception e) {
             return ResponseEntity.badRequest().build();
+        }
+    }
+    
+    // Tặng voucher cho top customers theo points
+    @PostMapping("/{voucherId}/give-to-top-customers")
+    public ResponseEntity<Map<String, Object>> giveVoucherToTopCustomers(
+            @PathVariable Long voucherId,
+            @RequestParam int topCount) {
+        try {
+            String result = voucherService.giveVoucherToTopCustomers(voucherId, topCount);
+            
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("message", result);
+            
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", "Failed to give voucher to top customers: " + e.getMessage());
+            
+            return ResponseEntity.badRequest().body(response);
+        }
+    }
+    
+    // Tặng voucher cho tất cả customers
+    @PostMapping("/{voucherId}/give-to-all-customers")
+    public ResponseEntity<Map<String, Object>> giveVoucherToAllCustomers(@PathVariable Long voucherId) {
+        try {
+            String result = voucherService.giveVoucherToAllCustomers(voucherId);
+            
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("message", result);
+            
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", "Failed to give voucher to all customers: " + e.getMessage());
+            
+            return ResponseEntity.badRequest().body(response);
+        }
+    }
+    
+    // Tặng voucher cho multiple customers
+    @PostMapping("/{voucherId}/give-to-multiple-customers")
+    public ResponseEntity<Map<String, Object>> giveVoucherToMultipleCustomers(
+            @PathVariable Long voucherId,
+            @RequestBody List<Long> customerIds) {
+        try {
+            String result = voucherService.giveVoucherToMultipleCustomers(voucherId, customerIds);
+            
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("message", result);
+            
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", "Failed to give voucher to multiple customers: " + e.getMessage());
+            
+            return ResponseEntity.badRequest().body(response);
         }
     }
 } 

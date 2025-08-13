@@ -152,14 +152,44 @@ public class CustomerService {
     }
     
     /**
+     * Create customer by staff for take-away orders
+     */
+    public Customer createCustomerByStaff(String email, String fullName, String phone) {
+        try {
+            // Create customer
+            Customer customer = new Customer();
+            customer.setFullName(fullName);
+            customer.setEmail(email);
+            customer.setRole("CUSTOMER");
+            customer.setProvider("STAFF_CREATED");
+            customer.setPassword(passwordEncoder.encode("temp123")); // Temporary password
+            
+            Customer savedCustomer = customerRepository.save(customer);
+            
+            // Auto-create CustomerDetail
+            createDefaultCustomerDetail(savedCustomer, phone);
+            
+            System.out.println("[STAFF CREATE] Created customer: " + email + " by staff");
+            return savedCustomer;
+        } catch (Exception e) {
+            System.err.println("[STAFF CREATE ERROR] Failed to create customer: " + e.getMessage());
+            throw new RuntimeException("Failed to create customer: " + e.getMessage());
+        }
+    }
+
+    /**
      * Create default CustomerDetail for new customer
      */
     private void createDefaultCustomerDetail(Customer customer) {
+        createDefaultCustomerDetail(customer, null);
+    }
+    
+    private void createDefaultCustomerDetail(Customer customer, String phone) {
         try {
             CustomerDetail customerDetail = new CustomerDetail();
             customerDetail.setCustomer(customer);
             customerDetail.setPoint("0"); // Start with 0 points
-            customerDetail.setPhoneNumber(null); // Will be filled later
+            customerDetail.setPhoneNumber(phone); // Set phone if provided
             customerDetail.setVoucher(null); // No vouchers initially
             
             // Save the customer detail

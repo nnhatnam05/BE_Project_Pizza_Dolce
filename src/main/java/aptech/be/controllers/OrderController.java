@@ -18,6 +18,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
@@ -56,6 +57,9 @@ public class OrderController {
     
     @Autowired
     private InvoiceEmailService invoiceEmailService;
+    
+    @Autowired
+    private UserRepository userRepository;
 
     // Helper method to add points to customer
     private int addPointsToCustomer(OrderEntity order) {
@@ -499,6 +503,12 @@ public class OrderController {
         }).collect(Collectors.toList());
         dto.setStatusHistory(historyDTOs);
 
+        // Thêm thông tin staff
+        if (order.getStaff() != null) {
+            UserDTO staffDTO = new UserDTO(order.getStaff());
+            dto.setStaff(staffDTO);
+        }
+
         return dto;
     }
 
@@ -568,6 +578,19 @@ public class OrderController {
         OrderEntity order = orderRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Order not found: " + id));
 
+        // Get current staff user who is updating the delivery status
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        String currentUserEmail = authentication.getName();
+        
+        Optional<UserEntity> staffOpt = userRepository.findByEmail(currentUserEmail);
+        if (staffOpt.isPresent()) {
+            UserEntity staff = staffOpt.get();
+            if ("STAFF".equals(staff.getRole()) || "ADMIN".equals(staff.getRole())) {
+                // Set staff who is updating the delivery order
+                order.setStaff(staff);
+            }
+        }
+
         // Kiểm tra đơn đã thanh toán và có thể cập nhật trạng thái giao hàng
         String currentStatus = order.getStatus();
         if (!"PAID".equals(currentStatus) && 
@@ -613,6 +636,7 @@ public class OrderController {
                 throw new RuntimeException("Invalid delivery status");
         }
 
+        order.setUpdatedAt(LocalDateTime.now());
         orderRepository.save(order);
         return convertToDTO(order);
     }

@@ -62,8 +62,13 @@ public class OrderEntity {
     @JoinColumn(name = "table_id")
     private TableEntity table;
 
-    private String orderType; // DELIVERY, DINE_IN
+    private String orderType; // DELIVERY, DINE_IN, TAKE_AWAY
     private String note; //Ghi chú từ khách hàng
+    
+    // Take-away specific fields
+    private String paymentMethod; // CASH, QR_BANKING
+    private String billImageUrl; // For QR banking payment proof
+    private LocalDateTime updatedAt; // Last update timestamp
 
     // Voucher information
     private String voucherCode; // Mã voucher được áp dụng
@@ -83,6 +88,11 @@ public class OrderEntity {
     @ManyToOne
     @JoinColumn(name = "shipper_id")
     private UserEntity shipper;
+
+    // Staff who created/manages this order
+    @ManyToOne
+    @JoinColumn(name = "staff_id")
+    private UserEntity staff;
 
     private LocalDateTime assignedAt; // Thời gian giao cho shipper
     private LocalDateTime pickedUpAt; // Thời gian shipper nhận hàng
@@ -311,5 +321,37 @@ public class OrderEntity {
 
     public void setOrderType(String orderType) {
         this.orderType = orderType;
+    }
+
+    public String getPaymentMethod() {
+        return paymentMethod;
+    }
+
+    public void setPaymentMethod(String paymentMethod) {
+        this.paymentMethod = paymentMethod;
+    }
+
+    public String getBillImageUrl() {
+        return billImageUrl;
+    }
+
+    public void setBillImageUrl(String billImageUrl) {
+        this.billImageUrl = billImageUrl;
+    }
+
+    public LocalDateTime getUpdatedAt() {
+        return updatedAt;
+    }
+
+    public void setUpdatedAt(LocalDateTime updatedAt) {
+        this.updatedAt = updatedAt;
+    }
+
+    public UserEntity getStaff() {
+        return staff;
+    }
+
+    public void setStaff(UserEntity staff) {
+        this.staff = staff;
     }
 }

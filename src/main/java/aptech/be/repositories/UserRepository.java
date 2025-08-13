@@ -13,8 +13,8 @@ public interface UserRepository extends JpaRepository<UserEntity, Long> {
     Optional<UserEntity> findByPhone(String phone);
     List<UserEntity> findByRole(String role);
     Optional<UserEntity> findByImageUrlContaining(String keyword);
-
-
-
+    
+    // Dashboard Analytics Methods
+    long countByRole(String role);
 }
 

@@ -254,6 +254,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/dinein/tables/*/confirm-payment").hasAnyAuthority("ROLE_ADMIN", "ROLE_STAFF")
                         .requestMatchers("/api/dinein/table/*/end-session").hasAnyAuthority("ROLE_ADMIN", "ROLE_STAFF")
                         .requestMatchers("/api/dinein/debug/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_STAFF")
+                        .requestMatchers("/api/admin/dashboard/**").hasAuthority("ROLE_ADMIN")
 
                         .anyRequest().authenticated()
                 )

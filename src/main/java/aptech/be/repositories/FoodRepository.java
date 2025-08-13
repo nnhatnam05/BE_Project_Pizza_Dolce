@@ -12,4 +12,7 @@ public interface FoodRepository extends JpaRepository<Food,Long> {
     Optional<Food> findByName(String name);
     Optional<Food> findByImageUrl(String imageUrl);
     List<Food> findByType(String type);
+    
+    // Dashboard Analytics Methods
+    long countByStatus(String status);
 }

@@ -13,9 +13,13 @@ import aptech.be.services.ClaimTokenService;
 import aptech.be.services.TableSessionService;
 import aptech.be.services.OrderService;
 import aptech.be.services.WebSocketNotificationService;
+import aptech.be.models.UserEntity;
+import aptech.be.repositories.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
@@ -51,6 +55,9 @@ public class DineInController {
     
     @Autowired
     private WebSocketNotificationService notificationService;
+    
+    @Autowired
+    private UserRepository userRepository;
 
     @GetMapping("/sessions/all")
     public ResponseEntity<?> getAllSessions() {
@@ -263,7 +270,22 @@ public class DineInController {
             }
 
             OrderEntity order = orderOpt.get();
+            
+            // Get current staff user who is updating the status
+            Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+            String currentUserEmail = authentication.getName();
+            
+            Optional<UserEntity> staffOpt = userRepository.findByEmail(currentUserEmail);
+            if (staffOpt.isPresent()) {
+                UserEntity staff = staffOpt.get();
+                if ("STAFF".equals(staff.getRole()) || "ADMIN".equals(staff.getRole())) {
+                    // Set staff who is updating the order (for DINE-IN, staff updates status)
+                    order.setStaff(staff);
+                }
+            }
+            
             order.setStatus(newStatus.toUpperCase());
+            order.setUpdatedAt(LocalDateTime.now());
             
             orderRepository.save(order);
             
