@@ -53,10 +53,10 @@ public class DashboardServiceImpl implements DashboardService {
         System.out.println("[DashboardService] Total revenue: " + totalRevenue + ", Total orders: " + totalOrders);
 
         // By type - try multiple delivery statuses
-        BigDecimal deliveryRevenue = orderRepository.getDeliveryRevenueByDeliveryStatus(startDate, endDate);
-        int deliveryOrders = orderRepository.getDeliveryOrderCountByDeliveryStatus(startDate, endDate);
+        BigDecimal deliveryRevenue = orderRepository.getDeliveryRevenueWithCorrectConditions(startDate, endDate);
+        int deliveryOrders = orderRepository.getDeliveryOrderCountWithCorrectConditions(startDate, endDate);
         
-        System.out.println("[DashboardService] Initial delivery query (by delivery_status='DELIVERED') - Revenue: " + deliveryRevenue + ", Orders: " + deliveryOrders);
+        System.out.println("[DashboardService] Delivery orders (confirmStatus=PAID AND deliveryStatus=DELIVERED) - Revenue: " + deliveryRevenue + ", Orders: " + deliveryOrders);
         
         // Fallback: try other delivery statuses if DELIVERED returns 0
         if (deliveryRevenue == null || deliveryRevenue.compareTo(BigDecimal.ZERO) == 0) {

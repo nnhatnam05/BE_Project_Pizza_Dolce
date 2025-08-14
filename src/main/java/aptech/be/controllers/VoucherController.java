@@ -188,6 +188,26 @@ public class VoucherController {
         }
     }
     
+    // Fix voucher types in database (for migration)
+    @PostMapping("/fix-voucher-types")
+    public ResponseEntity<Map<String, Object>> fixVoucherTypes() {
+        try {
+            String result = voucherService.fixVoucherTypes();
+            
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("message", result);
+            
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", "Failed to fix voucher types: " + e.getMessage());
+            
+            return ResponseEntity.badRequest().body(response);
+        }
+    }
+    
     // Lấy danh sách customers cho admin với point information
     @GetMapping("/customers")
     public ResponseEntity<List<Map<String, Object>>> getCustomersForAdmin() {

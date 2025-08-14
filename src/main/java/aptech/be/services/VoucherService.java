@@ -65,6 +65,9 @@ public class VoucherService {
         // Validate voucher logic before creating
         validateVoucherLogic(request.getType(), request.getValue(), request.getMinOrderAmount(), request.getMaxDiscountAmount());
         
+        // Validate expiration date
+        validateExpirationDate(request.getExpiresAt());
+        
         Voucher voucher = new Voucher();
         voucher.setCode(generateVoucherCode());
         voucher.setName(request.getName());
@@ -144,6 +147,10 @@ public class VoucherService {
                 ));
             }
         } else if ("PERCENTAGE".equals(type)) {
+            // For percentage vouchers: validate percentage value
+            if (value != null && (value <= 0 || value > 100)) {
+                throw new RuntimeException("Percentage voucher value must be between 0 and 100");
+            }
             // For percentage vouchers: if maxDiscountAmount is set, minOrderAmount should be >= maxDiscountAmount
             if (maxDiscountAmount != null && minOrderAmount != null && minOrderAmount < maxDiscountAmount) {
                 throw new RuntimeException(String.format(
@@ -151,6 +158,29 @@ public class VoucherService {
                     minOrderAmount, maxDiscountAmount
                 ));
             }
+        } else if ("FREE_ITEM".equals(type)) {
+            // For free item vouchers: value should represent the item price or be 0
+            if (value != null && value < 0) {
+                throw new RuntimeException("Free item voucher value cannot be negative");
+            }
+        }
+    }
+
+    // Validate expiration date
+    private void validateExpirationDate(LocalDateTime expiresAt) {
+        if (expiresAt == null) {
+            throw new RuntimeException("Expiration date is required");
+        }
+        
+        LocalDateTime now = LocalDateTime.now();
+        if (expiresAt.isBefore(now)) {
+            throw new RuntimeException("Expiration date cannot be in the past");
+        }
+        
+        // Check if expiration date is too far in the future (e.g., more than 10 years)
+        LocalDateTime maxFuture = now.plusYears(10);
+        if (expiresAt.isAfter(maxFuture)) {
+            throw new RuntimeException("Expiration date cannot be more than 10 years in the future");
         }
     }
 
@@ -335,32 +365,50 @@ public class VoucherService {
     private Double calculateDiscount(Voucher voucher, Double orderAmount) {
         Double discount = 0.0;
         
+        System.out.println("[VOUCHER DEBUG] Calculating discount for voucher: " + voucher.getCode());
+        System.out.println("[VOUCHER DEBUG] Voucher type: " + voucher.getType());
+        System.out.println("[VOUCHER DEBUG] Voucher value: " + voucher.getValue());
+        System.out.println("[VOUCHER DEBUG] Order amount: " + orderAmount);
+        System.out.println("[VOUCHER DEBUG] Max discount amount: " + voucher.getMaxDiscountAmount());
+        
         switch (voucher.getType()) {
             case PERCENTAGE:
+                // Tính discount theo phần trăm
                 discount = orderAmount * (voucher.getValue() / 100.0);
+                System.out.println("[VOUCHER DEBUG] Calculated percentage discount: " + discount);
+                
+                // Nếu có maxDiscountAmount, áp dụng giới hạn tối đa
+                if (voucher.getMaxDiscountAmount() != null && discount > voucher.getMaxDiscountAmount()) {
+                    System.out.println("[VOUCHER DEBUG] Applying max discount limit: " + voucher.getMaxDiscountAmount());
+                    discount = voucher.getMaxDiscountAmount();
+                }
                 break;
+                
             case FIXED_AMOUNT:
+                // Voucher giảm số tiền cố định
                 discount = voucher.getValue();
+                System.out.println("[VOUCHER DEBUG] Fixed amount discount: " + discount);
                 break;
-            case FREE_SHIPPING:
-                // Assume shipping fee is $5 (you can make this configurable)
-                discount = 5.0;
+                
+            case FREE_ITEM:
+                // Voucher tặng nước - discount là giá trị ly nước
+                discount = voucher.getValue() != null ? voucher.getValue() : 0.0;
+                System.out.println("[VOUCHER DEBUG] Free item discount: " + discount);
                 break;
+                
             default:
                 discount = 0.0;
+                System.out.println("[VOUCHER DEBUG] Unknown voucher type, discount: " + discount);
                 break;
         }
         
-        // Apply max discount limit if exists
-        if (voucher.getMaxDiscountAmount() != null && discount > voucher.getMaxDiscountAmount()) {
-            discount = voucher.getMaxDiscountAmount();
-        }
-        
-        // Discount cannot exceed order amount
+        // Discount không thể vượt quá giá trị đơn hàng
         if (discount > orderAmount) {
+            System.out.println("[VOUCHER DEBUG] Limiting discount to order amount: " + orderAmount);
             discount = orderAmount;
         }
         
+        System.out.println("[VOUCHER DEBUG] Final discount: " + discount);
         return discount;
     }
     
@@ -415,33 +463,39 @@ public class VoucherService {
     // Scheduled task để xóa voucher hết hạn (chạy mỗi giờ)
     @Scheduled(fixedRate = 3600000) // 1 hour
     public void cleanupExpiredVouchers() {
-        LocalDateTime now = LocalDateTime.now();
-        
-        // Xóa customer voucher hết hạn
-        List<CustomerVoucher> expiredCustomerVouchers = customerVoucherRepository.findExpiredVouchers(now);
-        if (!expiredCustomerVouchers.isEmpty()) {
-            customerVoucherRepository.deleteAll(expiredCustomerVouchers);
-            System.out.println("[VOUCHER CLEANUP] Deleted " + expiredCustomerVouchers.size() + " expired customer vouchers");
-        }
-        
-        // Deactivate voucher hết hạn
-        List<Voucher> expiredVouchers = voucherRepository.findExpiredVouchers(now);
-        for (Voucher voucher : expiredVouchers) {
-            voucher.setIsActive(false);
-        }
-        if (!expiredVouchers.isEmpty()) {
-            voucherRepository.saveAll(expiredVouchers);
-            System.out.println("[VOUCHER CLEANUP] Deactivated " + expiredVouchers.size() + " expired vouchers");
-        }
-        
-        // Deactivate voucher đã hết số lượng
-        List<Voucher> fullyUsedVouchers = voucherRepository.findFullyUsedVouchers();
-        for (Voucher voucher : fullyUsedVouchers) {
-            voucher.setIsActive(false);
-        }
-        if (!fullyUsedVouchers.isEmpty()) {
-            voucherRepository.saveAll(fullyUsedVouchers);
-            System.out.println("[VOUCHER CLEANUP] Deactivated " + fullyUsedVouchers.size() + " fully used vouchers");
+        try {
+            LocalDateTime now = LocalDateTime.now();
+            
+            // Xóa customer voucher hết hạn
+            List<CustomerVoucher> expiredCustomerVouchers = customerVoucherRepository.findExpiredVouchers(now);
+            if (!expiredCustomerVouchers.isEmpty()) {
+                customerVoucherRepository.deleteAll(expiredCustomerVouchers);
+                System.out.println("[VOUCHER CLEANUP] Deleted " + expiredCustomerVouchers.size() + " expired customer vouchers");
+            }
+            
+            // Deactivate voucher hết hạn
+            List<Voucher> expiredVouchers = voucherRepository.findExpiredVouchers(now);
+            for (Voucher voucher : expiredVouchers) {
+                voucher.setIsActive(false);
+            }
+            if (!expiredVouchers.isEmpty()) {
+                voucherRepository.saveAll(expiredVouchers);
+                System.out.println("[VOUCHER CLEANUP] Deactivated " + expiredVouchers.size() + " expired vouchers");
+            }
+            
+            // Deactivate voucher đã hết số lượng
+            List<Voucher> fullyUsedVouchers = voucherRepository.findFullyUsedVouchers();
+            for (Voucher voucher : fullyUsedVouchers) {
+                voucher.setIsActive(false);
+            }
+            if (!fullyUsedVouchers.isEmpty()) {
+                voucherRepository.saveAll(fullyUsedVouchers);
+                System.out.println("[VOUCHER CLEANUP] Deactivated " + fullyUsedVouchers.size() + " fully used vouchers");
+            }
+        } catch (Exception e) {
+            // Log error but don't crash the scheduled task
+            System.err.println("[VOUCHER CLEANUP ERROR] Error during cleanup: " + e.getMessage());
+            e.printStackTrace();
         }
     }
     
@@ -474,9 +528,9 @@ public class VoucherService {
             case FIXED_AMOUNT:
                 discount = Math.min(voucher.getValue(), orderAmount);
                 break;
-            case FREE_SHIPPING:
-                // Implement free shipping logic
-                discount = 0; // Placeholder
+            case FREE_ITEM:
+                // For free item vouchers, discount is the value of the free item
+                discount = voucher.getValue() != null ? voucher.getValue() : 0.0;
                 break;
             default:
                 discount = 0;
@@ -639,5 +693,48 @@ public class VoucherService {
             }
         }
         return 0;
+    }
+    
+    // Fix voucher types in database (for migration from old enum values)
+    @Transactional
+    public String fixVoucherTypes() {
+        try {
+            // Get all vouchers
+            List<Voucher> allVouchers = voucherRepository.findAll();
+            int updatedCount = 0;
+            
+            for (Voucher voucher : allVouchers) {
+                VoucherType currentType = voucher.getType();
+                
+                // Check if voucher type is invalid (this will throw exception if type is invalid)
+                try {
+                    // Try to get the type name to see if it's valid
+                    String typeName = currentType.name();
+                    
+                    // Update invalid voucher types
+                    if ("FREE_SHIPPING".equals(typeName)) {
+                        voucher.setType(VoucherType.FREE_ITEM);
+                        updatedCount++;
+                    } else if ("BUY_ONE_GET_ONE".equals(typeName)) {
+                        voucher.setType(VoucherType.FREE_ITEM);
+                        updatedCount++;
+                    }
+                } catch (Exception e) {
+                    // If we can't get the type name, it means the type is invalid
+                    voucher.setType(VoucherType.PERCENTAGE);
+                    updatedCount++;
+                }
+            }
+            
+            if (updatedCount > 0) {
+                voucherRepository.saveAll(allVouchers);
+                return "Updated " + updatedCount + " vouchers with invalid types";
+            } else {
+                return "No vouchers with invalid types found";
+            }
+            
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to fix voucher types: " + e.getMessage());
+        }
     }
 } 

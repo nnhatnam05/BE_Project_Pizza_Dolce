@@ -190,12 +190,13 @@ public class DashboardController {
             LocalDateTime monthStart = LocalDateTime.now().with(TemporalAdjusters.firstDayOfMonth()).with(LocalTime.MIN);
             LocalDateTime now = LocalDateTime.now();
             
-            BigDecimal deliveryRevenue = orderRepository.getDeliveryRevenueByDeliveryStatus(monthStart, now);
-            int deliveryOrders = orderRepository.getDeliveryOrderCountByDeliveryStatus(monthStart, now);
+            BigDecimal deliveryRevenue = orderRepository.getDeliveryRevenueWithCorrectConditions(monthStart, now);
+            int deliveryOrders = orderRepository.getDeliveryOrderCountWithCorrectConditions(monthStart, now);
             
             result.put("deliveryRevenue", deliveryRevenue);
             result.put("deliveryOrders", deliveryOrders);
             result.put("dateRange", monthStart + " to " + now);
+            result.put("conditions", "confirmStatus=PAID AND deliveryStatus=DELIVERED");
             
             // Also test old method for comparison
             BigDecimal oldDeliveryRevenue = orderRepository.getRevenueByDeliveryStatus("DELIVERED", monthStart, now);

@@ -190,7 +190,16 @@ public class Voucher {
     
     // Helper methods
     public boolean isExpired() {
-        return expiresAt != null && LocalDateTime.now().isAfter(expiresAt);
+        if (expiresAt == null) return false;
+        
+        try {
+            LocalDateTime now = LocalDateTime.now();
+            return now.isAfter(expiresAt);
+        } catch (Exception e) {
+            // Log error and treat as expired for safety
+            System.err.println("Error checking voucher expiration: " + e.getMessage());
+            return true;
+        }
     }
     
     public boolean isAvailable() {
