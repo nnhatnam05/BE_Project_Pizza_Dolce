@@ -88,6 +88,12 @@ public class CustomerAuthController {
         if (customer == null) {
             return ResponseEntity.status(401).body("Email not found");
         }
+        
+        // Kiểm tra customer có active không
+        if (customer.getIsActive() != null && !customer.getIsActive()) {
+            return ResponseEntity.status(401).body("Account is deactivated");
+        }
+        
         if (!customerService.checkPassword(request.getPassword(), customer.getPassword())) {
             return ResponseEntity.status(401).body("Invalid password");
         }
@@ -126,7 +132,13 @@ public class CustomerAuthController {
                 customer.setProvider("GOOGLE"); // tuỳ bạn thêm field này
                 customer.setRole("CUSTOMER");
                 customer.setPassword(UUID.randomUUID().toString());
+                customer.setIsActive(true); // Set mặc định active cho customer mới
                 customerService.save(customer);
+            } else {
+                // Kiểm tra customer có active không
+                if (customer.getIsActive() != null && !customer.getIsActive()) {
+                    return ResponseEntity.status(401).body("Account is deactivated");
+                }
             }
 
             // Sinh JWT cho FE
@@ -321,28 +333,60 @@ public class CustomerAuthController {
     }
 
     @PostMapping("/forgot-password")
-    public ResponseEntity<?> forgotPassword(@RequestBody Map<String, String> body) {
-        String email = body.get("email");
-        if (customerService.findByEmail(email) == null) {
-            return ResponseEntity.badRequest().body("Email not found");
+    public ResponseEntity<?> forgotPassword(@RequestBody Map<String, String> request) {
+        String email = request.get("email");
+        if (email == null || email.trim().isEmpty()) {
+            return ResponseEntity.badRequest().body("Email is required");
         }
-        String result = customerService.generateAndSendVerificationCode(email);
-        if (result.startsWith("Verification")) {
-            return ResponseEntity.ok(result);
+
+        Customer customer = customerService.findByEmail(email);
+        if (customer == null) {
+            return ResponseEntity.status(401).body("Email not found");
         }
-        return ResponseEntity.status(429).body(result); // 429: Too Many Requests
+        
+        // Kiểm tra customer có active không
+        if (customer.getIsActive() != null && !customer.getIsActive()) {
+            return ResponseEntity.status(401).body("Account is deactivated");
+        }
+
+        try {
+            customerService.generateAndSendVerificationCode(email);
+            return ResponseEntity.ok("Verification code sent to your email");
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body("Failed to send verification code");
+        }
     }
 
     @PostMapping("/reset-password")
-    public ResponseEntity<?> resetPassword(@RequestBody Map<String, String> body) {
-        String email = body.get("email");
-        String code = body.get("code");
-        String newPassword = body.get("newPassword");
+    public ResponseEntity<?> resetPassword(@RequestBody Map<String, String> request) {
+        String email = request.get("email");
+        String code = request.get("code");
+        String newPassword = request.get("newPassword");
+
+        if (email == null || code == null || newPassword == null) {
+            return ResponseEntity.badRequest().body("Email, code, and new password are required");
+        }
+
+        Customer customer = customerService.findByEmail(email);
+        if (customer == null) {
+            return ResponseEntity.status(401).body("Email not found");
+        }
+        
+        // Kiểm tra customer có active không
+        if (customer.getIsActive() != null && !customer.getIsActive()) {
+            return ResponseEntity.status(401).body("Account is deactivated");
+        }
+
+        try {
         String result = customerService.resetPassword(email, code, newPassword);
         if ("Password reset successful".equals(result)) {
-            return ResponseEntity.ok(result);
-        }
+                return ResponseEntity.ok("Password reset successful");
+            } else {
         return ResponseEntity.badRequest().body(result);
+            }
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body("Failed to reset password");
+        }
     }
 
 }

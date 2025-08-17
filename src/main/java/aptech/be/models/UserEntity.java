@@ -27,6 +27,8 @@ public class UserEntity {
     private String phone;
     private String imageUrl;
     private String role; // ADMIN, STAFF, SHIPPER
+    @Column(columnDefinition = "BOOLEAN DEFAULT TRUE")
+    private Boolean isActive = true; // Thêm field active status
 
     @OneToOne(mappedBy = "user", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     @JsonManagedReference
@@ -99,6 +101,14 @@ public class UserEntity {
 
     public void setRole(String role) {
         this.role = role;
+    }
+
+    public Boolean getIsActive() {
+        return isActive;
+    }
+
+    public void setIsActive(Boolean isActive) {
+        this.isActive = isActive;
     }
 
     public StaffProfile getStaffProfile() {

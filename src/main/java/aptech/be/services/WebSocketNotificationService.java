@@ -1,5 +1,6 @@
 package aptech.be.services;
 
+import aptech.be.dto.AccountDeactivationDTO;
 import aptech.be.dto.NotificationDTO;
 import aptech.be.dto.OrderNotificationDTO;
 import aptech.be.models.OrderEntity;
@@ -43,6 +44,52 @@ public class WebSocketNotificationService {
      */
     public void sendTableStatusUpdate(Object tableData) {
         messagingTemplate.convertAndSend("/topic/staff/tables", tableData);
+    }
+    
+    /**
+     * Send account deactivation notification to specific user
+     * This will trigger logout and redirect to login page
+     */
+    public void sendAccountDeactivationNotification(String userId, String username, String userType) {
+        try {
+            AccountDeactivationDTO deactivationNotification = AccountDeactivationDTO.accountDeactivated(userId, username, userType);
+            
+            // Send to specific user topic
+            messagingTemplate.convertAndSend("/topic/user/" + userId + "/account-status", deactivationNotification);
+            
+            // Also send to general account status topic for broader listening
+            messagingTemplate.convertAndSend("/topic/account-status", deactivationNotification);
+            
+            System.out.println("[WEBSOCKET] Account deactivation notification sent to user: " + username + " (ID: " + userId + ", Type: " + userType + ")");
+        } catch (Exception e) {
+            System.err.println("[WEBSOCKET ERROR] Failed to send account deactivation notification: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * Send account activation notification to specific user
+     */
+    public void sendAccountActivationNotification(String userId, String username, String userType) {
+        try {
+            AccountDeactivationDTO activationNotification = new AccountDeactivationDTO(
+                "ACCOUNT_ACTIVATED",
+                "Your account has been activated by administrator",
+                "Account activated by admin",
+                userId,
+                username,
+                userType
+            );
+            
+            // Send to specific user topic
+            messagingTemplate.convertAndSend("/topic/user/" + userId + "/account-status", activationNotification);
+            
+            // Also send to general account status topic
+            messagingTemplate.convertAndSend("/topic/account-status", activationNotification);
+            
+            System.out.println("[WEBSOCKET] Account activation notification sent to user: " + username + " (ID: " + userId + ", Type: " + userType + ")");
+        } catch (Exception e) {
+            System.err.println("[WEBSOCKET ERROR] Failed to send account activation notification: " + e.getMessage());
+        }
     }
     
     /**

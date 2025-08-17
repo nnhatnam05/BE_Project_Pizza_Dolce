@@ -13,6 +13,7 @@ public interface UserRepository extends JpaRepository<UserEntity, Long> {
     Optional<UserEntity> findByPhone(String phone);
     List<UserEntity> findByRole(String role);
     Optional<UserEntity> findByImageUrlContaining(String keyword);
+    List<UserEntity> findByIsActive(Boolean isActive); // Thêm method tìm theo active status
     
     // Dashboard Analytics Methods
     long countByRole(String role);

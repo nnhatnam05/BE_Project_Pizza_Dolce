@@ -10,6 +10,7 @@ public class UserDTO {
     private String phone;
     private String imageUrl;
     private String role;
+    private Boolean isActive; // Thêm field active status
     private StaffProfileDTO staffProfile; // chỉ cần thông tin cơ bản
 
     // Constructor, getter, setter...
@@ -22,6 +23,7 @@ public class UserDTO {
         this.phone = entity.getPhone();
         this.imageUrl = entity.getImageUrl();
         this.role = entity.getRole();
+        this.isActive = entity.getIsActive();
         if (entity.getStaffProfile() != null) {
             this.staffProfile = new StaffProfileDTO(entity.getStaffProfile());
         }
@@ -81,6 +83,14 @@ public class UserDTO {
 
     public void setRole(String role) {
         this.role = role;
+    }
+
+    public Boolean getIsActive() {
+        return isActive;
+    }
+
+    public void setIsActive(Boolean isActive) {
+        this.isActive = isActive;
     }
 
     public StaffProfileDTO getStaffProfile() {

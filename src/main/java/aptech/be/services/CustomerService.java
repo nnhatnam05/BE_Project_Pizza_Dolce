@@ -77,6 +77,7 @@ public class CustomerService {
         customer.setFullName(req.getFullName());
         customer.setEmail(req.getEmail());
         customer.setPassword(passwordEncoder.encode(req.getPassword()));
+        customer.setIsActive(true); // Set mặc định active cho customer mới
         Customer savedCustomer = customerRepository.save(customer);
         
         // Auto-create CustomerDetail for new customer
@@ -163,6 +164,7 @@ public class CustomerService {
             customer.setRole("CUSTOMER");
             customer.setProvider("STAFF_CREATED");
             customer.setPassword(passwordEncoder.encode("temp123")); // Temporary password
+            customer.setIsActive(true); // Set mặc định active cho customer mới
             
             Customer savedCustomer = customerRepository.save(customer);
             

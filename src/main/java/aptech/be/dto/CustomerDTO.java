@@ -8,6 +8,7 @@ public class CustomerDTO {
     private String imageUrl;
     private String voucher;
     private String point;
+    private Boolean isActive; // Thêm field active status
 
     public Long getId() {
         return id;
@@ -63,5 +64,13 @@ public class CustomerDTO {
 
     public void setPoint(String point) {
         this.point = point;
+    }
+
+    public Boolean getIsActive() {
+        return isActive;
+    }
+
+    public void setIsActive(Boolean isActive) {
+        this.isActive = isActive;
     }
 }

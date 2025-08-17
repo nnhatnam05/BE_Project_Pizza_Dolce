@@ -13,6 +13,7 @@ import java.util.Optional;
 @Repository
 public interface CustomerRepository extends JpaRepository<Customer, Long> {
     Optional<Customer> findByEmail(String email);
+    List<Customer> findByIsActive(Boolean isActive); // Thêm method tìm theo active status
     
     // Dashboard Analytics Methods
     @Query("SELECT COUNT(c) FROM Customer c WHERE EXISTS (SELECT 1 FROM CustomerDetail cd WHERE cd.customer = c AND CAST(cd.point AS integer) > 100)")

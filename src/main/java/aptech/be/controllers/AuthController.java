@@ -11,6 +11,7 @@ import aptech.be.repositories.staff.AttendanceRecordRepository;
 import aptech.be.repositories.staff.StaffProfileRepository;
 import aptech.be.services.CustomUserDetails;
 import aptech.be.services.EmailService;
+import aptech.be.services.WebSocketNotificationService;
 import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -56,7 +57,7 @@ public class AuthController {
     private UserDetailsService userDetailsService;
 
     private final EmailService emailService;
-
+    private final WebSocketNotificationService webSocketNotificationService;
 
 
     private final ConcurrentHashMap<String, String> verificationCodes = new ConcurrentHashMap<>();
@@ -68,13 +69,14 @@ public class AuthController {
     public AuthController(
             UserRepository userRepository, PasswordEncoder passwordEncoder, AuthenticationManager authenticationManager,
             JwtUtil jwtUtil,@Qualifier("userDetailsServiceImpl") UserDetailsService userDetailsService, EmailService emailService,
-            StaffProfileRepository staffProfileRepository, AttendanceRecordRepository attendanceRecordRepository) {
+            WebSocketNotificationService webSocketNotificationService, StaffProfileRepository staffProfileRepository, AttendanceRecordRepository attendanceRecordRepository) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.authenticationManager = authenticationManager;
         this.jwtUtil = jwtUtil;
         this.userDetailsService = userDetailsService;
         this.emailService = emailService;
+        this.webSocketNotificationService = webSocketNotificationService;
         this.staffProfileRepository = staffProfileRepository;
         this.attendanceRecordRepository = attendanceRecordRepository;
     }
@@ -95,6 +97,12 @@ public class AuthController {
         }
 
         UserEntity user = userOpt.get();
+        
+        // Kiểm tra user có active không
+        if (user.getIsActive() != null && !user.getIsActive()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Account is deactivated. Please contact administrator.");
+        }
+        
         String email = user.getEmail();
 
         if (email == null || email.isBlank()) {
@@ -171,6 +179,7 @@ public class AuthController {
         newUser.setEmail(email);
         newUser.setPhone(phone);
         newUser.setRole(role.toUpperCase());
+        newUser.setIsActive(true); // Set mặc định active cho user mới
 
         if (imageFile != null && !imageFile.isEmpty()) {
             try {
@@ -218,7 +227,15 @@ public class AuthController {
     @GetMapping("/users")
     @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public ResponseEntity<?> getAllUsers() {
-        List<UserDTO> users = userRepository.findAll().stream().map(UserDTO::new).toList();
+        List<UserDTO> users = userRepository.findAll().stream()
+                .map(user -> {
+                    // Xử lý trường hợp isActive có thể null
+                    if (user.getIsActive() == null) {
+                        user.setIsActive(true); // Set mặc định true nếu null
+                    }
+                    return new UserDTO(user);
+                })
+                .toList();
         return ResponseEntity.ok(users);
     }
 
@@ -228,7 +245,12 @@ public class AuthController {
     public ResponseEntity<?> getUserById(@PathVariable Long id) {
         Optional<UserEntity> userOpt = userRepository.findById(id);
         if (userOpt.isPresent()) {
-            return ResponseEntity.ok(new UserDTO(userOpt.get()));
+            UserEntity user = userOpt.get();
+            // Xử lý trường hợp isActive có thể null
+            if (user.getIsActive() == null) {
+                user.setIsActive(true); // Set mặc định true nếu null
+            }
+            return ResponseEntity.ok(new UserDTO(user));
         } else {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body("User not found");
         }
@@ -477,8 +499,16 @@ public class AuthController {
     }
 
     @PostMapping("/send-mail")
-    public ResponseEntity<?> sendMail(@RequestBody Map<String, String> request) {
-        String username = request.get("username");
+    public ResponseEntity<?> sendMail(@RequestBody Map<String, String> request, @RequestHeader("Authorization") String authHeader) {
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid authorization header");
+        }
+
+        String token = authHeader.substring(7);
+        String username = jwtUtil.extractUsername(token);
+        if (username == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid token");
+        }
 
         Optional<UserEntity> userOpt = userRepository.findByUsername(username);
         if (userOpt.isEmpty()) {
@@ -486,27 +516,31 @@ public class AuthController {
         }
 
         UserEntity user = userOpt.get();
-        String email = user.getEmail();
-
-        if (email == null || email.isBlank()) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Email not set for user");
+        
+        // Kiểm tra user có active không trước khi gửi code mới
+        if (user.getIsActive() != null && !user.getIsActive()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Account is deactivated. Please contact administrator.");
         }
-
-        if (blockedEmails.containsKey(email)) {
-            LocalDateTime unblockTime = blockedEmails.get(email);
-            if (LocalDateTime.now().isBefore(unblockTime)) {
-                return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Too many attempts. Try again later.");
-            } else {
-                blockedEmails.remove(email);
-                failedAttempts.remove(email);
-            }
+        
+        String email = user.getEmail();
+        if (email == null || email.isBlank()) {
+            return ResponseEntity.badRequest().body("Email not set for user");
         }
 
         String code = String.format("%06d", ThreadLocalRandom.current().nextInt(1000000));
+        System.out.println("DEBUG: Creating verification code for email: " + email);
+        System.out.println("DEBUG: Generated code: " + code);
+        
         verificationCodes.put(email, code);
-        failedAttempts.put(email, 0);
+        System.out.println("DEBUG: Code stored in verificationCodes map");
 
-        emailService.sendVerificationCode(email, code); // Make sure EmailService is @Autowired
+        try {
+        emailService.sendVerificationCode(email, code);
+            System.out.println("DEBUG: Email sent successfully");
+        } catch (Exception e) {
+            System.out.println("DEBUG: Email sending failed: " + e.getMessage());
+        }
+        
         System.out.println("VERIFY EMAIL: " + email);
         System.out.println("VERIFY CODE: " + code);
         return ResponseEntity.ok("Verification code sent");
@@ -530,7 +564,7 @@ public class AuthController {
 
         // Kiểm tra code có tồn tại không
         if (!verificationCodes.containsKey(email)) {
-            System.out.println("DEBUG: No code found for email: " + email);
+            System.out.println("DEBUG: No code sent to this email");
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("No code sent to this email");
         }
 
@@ -550,9 +584,18 @@ public class AuthController {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body("User not found");
         }
 
+        UserEntity user = userOpt.get();
+        
+        // Kiểm tra user có active không ở bước 2
+        if (user.getIsActive() != null && !user.getIsActive()) {
+            System.out.println("DEBUG: User account is deactivated");
+            verificationCodes.remove(email); // Xóa code để tránh spam
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Account is deactivated. Please contact administrator.");
+        }
+
         verificationCodes.remove(email);
 
-        final UserDetails userDetails = userDetailsService.loadUserByUsername(userOpt.get().getUsername());
+        final UserDetails userDetails = userDetailsService.loadUserByUsername(user.getUsername());
         final String jwt = jwtUtil.generateToken(userDetails);
 
         return ResponseEntity.ok(Collections.singletonMap("token", jwt));
@@ -569,6 +612,108 @@ public class AuthController {
         UserEntity user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new RuntimeException("User not found"));
         return ResponseEntity.ok(new UserDTO(user));
+    }
+
+    /**
+     * Toggle user active status (ADMIN only)
+     */
+    @PutMapping("/users/{id}/toggle-status")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<?> toggleUserStatus(@PathVariable Long id) {
+        Optional<UserEntity> userOpt = userRepository.findById(id);
+        if (userOpt.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body("User not found");
+        }
+
+        UserEntity user = userOpt.get();
+        
+        // Không cho phép deactivate chính mình
+        var authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication != null && authentication.getPrincipal() instanceof CustomUserDetails customUserDetails) {
+            if (customUserDetails.getUserEntity().getId().equals(id)) {
+                return ResponseEntity.badRequest().body("Cannot deactivate your own account");
+            }
+        }
+
+        // Xử lý trường hợp isActive có thể null (database chưa có cột)
+        Boolean currentStatus = user.getIsActive();
+        if (currentStatus == null) {
+            // Nếu chưa có cột isActive, tạo mới với giá trị true
+            currentStatus = true;
+            user.setIsActive(true);
+        }
+
+        // Toggle status
+        user.setIsActive(!currentStatus);
+        userRepository.save(user);
+
+        String status = user.getIsActive() ? "activated" : "deactivated";
+        
+        System.out.println("[DEBUG] User status changed: " + user.getUsername() + " -> " + status);
+        System.out.println("[DEBUG] User ID: " + user.getId() + ", Role: " + user.getRole());
+        
+        // Send WebSocket notification based on status change
+        if (user.getIsActive()) {
+            // User was activated
+            System.out.println("[DEBUG] Sending activation notification...");
+            webSocketNotificationService.sendAccountActivationNotification(
+                user.getId().toString(), 
+                user.getUsername(), 
+                user.getRole()
+            );
+        } else {
+            // User was deactivated
+            System.out.println("[DEBUG] Sending deactivation notification...");
+            webSocketNotificationService.sendAccountDeactivationNotification(
+                user.getId().toString(), 
+                user.getUsername(), 
+                user.getRole()
+            );
+        }
+        
+        System.out.println("[DEBUG] WebSocket notification sent successfully");
+        
+        return ResponseEntity.ok(Map.of(
+            "message", "User " + status + " successfully",
+            "userId", id,
+            "isActive", user.getIsActive()
+        ));
+    }
+
+    /**
+     * Test WebSocket endpoint (for debugging)
+     */
+    @PostMapping("/test-websocket")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<?> testWebSocket(@RequestBody Map<String, String> request) {
+        String userId = request.get("userId");
+        String username = request.get("username");
+        String userType = request.get("userType");
+        
+        System.out.println("[TEST] Testing WebSocket for user: " + username + " (ID: " + userId + ", Type: " + userType + ")");
+        
+        try {
+            webSocketNotificationService.sendAccountDeactivationNotification(userId, username, userType);
+            System.out.println("[TEST] WebSocket test notification sent successfully");
+            return ResponseEntity.ok("WebSocket test notification sent successfully");
+        } catch (Exception e) {
+            System.err.println("[TEST] WebSocket test failed: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("WebSocket test failed: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Get users by active status (ADMIN only)
+     */
+    @GetMapping("/users/status/{isActive}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<?> getUsersByStatus(@PathVariable Boolean isActive) {
+        List<UserDTO> users = userRepository.findByIsActive(isActive)
+                .stream()
+                .map(UserDTO::new)
+                .toList();
+        return ResponseEntity.ok(users);
     }
 
 

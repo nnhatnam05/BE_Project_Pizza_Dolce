@@ -16,6 +16,8 @@ public class Customer {
     private String email;
     private String password;
     private String role;
+    @Column(columnDefinition = "BOOLEAN DEFAULT TRUE")
+    private Boolean isActive = true; // Thêm field active status
 
 
     @OneToOne(mappedBy = "customer")
@@ -76,5 +78,13 @@ public class Customer {
 
     public void setRole(String role) {
         this.role = role;
+    }
+
+    public Boolean getIsActive() {
+        return isActive;
+    }
+
+    public void setIsActive(Boolean isActive) {
+        this.isActive = isActive;
     }
 }

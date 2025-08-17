@@ -40,6 +40,10 @@ public class UserDetailsServiceImpl implements UserDetailsService {
                 .orElse(null);
 
         if (user != null) {
+            // Kiểm tra user có active không (xử lý null an toàn)
+            if (user.getIsActive() != null && !user.getIsActive()) {
+                throw new UsernameNotFoundException("User account is deactivated");
+            }
             System.out.println("USER LOGIN: " + user.getUsername());
             return new CustomUserDetails(user);
         }
@@ -48,6 +52,10 @@ public class UserDetailsServiceImpl implements UserDetailsService {
         Customer customer = customerRepository.findByEmail(usernameOrEmail).orElse(null);
 
         if (customer != null) {
+            // Kiểm tra customer có active không (xử lý null an toàn)
+            if (customer.getIsActive() != null && !customer.getIsActive()) {
+                throw new UsernameNotFoundException("Customer account is deactivated");
+            }
             System.out.println("CUSTOMER LOGIN: " + customer.getEmail());
             return new CustomerDetails(customer);
         }
