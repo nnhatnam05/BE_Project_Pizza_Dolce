@@ -91,7 +91,6 @@ public class SecurityConfig {
         return http.build();
     }
 
-
     @Bean
     @Order(1)
     public SecurityFilterChain loginFilterChain(HttpSecurity http) throws Exception {
@@ -101,7 +100,6 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth.anyRequest().permitAll());
         return http.build();
     }
-
 
     @Bean
     @Order(2)
@@ -144,6 +142,18 @@ public class SecurityConfig {
         return http.build();
     }
 
+	@Bean
+	@Order(3)
+	public SecurityFilterChain chatPublicChain(HttpSecurity http) throws Exception {
+		http
+			.securityMatcher(request -> request.getServletPath().startsWith("/api/chat/"))
+				.csrf(csrf -> csrf.disable())
+				.cors(cors -> {})
+				.authorizeHttpRequests(auth -> auth.anyRequest().permitAll())
+				.addFilterBefore(jwtFilterForCustomer, UsernamePasswordAuthenticationFilter.class);
+        return http.build();
+    }
+
     @Bean
     @Order(4)
     public SecurityFilterChain customerFilterChain(HttpSecurity http) throws Exception {
@@ -156,7 +166,6 @@ public class SecurityConfig {
                 .cors(cors -> {})
                 .sessionManagement(sess -> sess.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        // Các endpoint public
                         .requestMatchers(
                                 "/api/customer/login",
                                 "/api/customer/register",
@@ -164,10 +173,7 @@ public class SecurityConfig {
                                 "/api/customer/google-login",
                                 "/api/customer/forgot-password",
                                 "/api/customer/reset-password"
-
                         ).permitAll()
-
-                        // Các endpoint dành riêng cho customer
                         .requestMatchers(
                                 "/api/customer/me/detail",
                                 "/api/customer/change-password",
@@ -182,14 +188,8 @@ public class SecurityConfig {
                                 "/api/orders/my/**",
                                 "/api/orders/*/points-earned"
                         ).hasAuthority("ROLE_CUSTOMER")
-
-                        // Nếu có cho customer xem detail đơn hàng riêng mình, giữ rule này (trong controller đã kiểm tra chủ đơn)
                         .requestMatchers("/api/orders/{id}").hasAuthority("ROLE_CUSTOMER")
-
-                        // Các endpoint GET món ăn (menu, v.v...) cho phép public nếu muốn
                         .requestMatchers("/api/foods").permitAll()
-
-                        // Còn lại bắt buộc phải đăng nhập
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtFilterForCustomer, UsernamePasswordAuthenticationFilter.class)
@@ -199,15 +199,12 @@ public class SecurityConfig {
         return http.build();
     }
 
-
-
     @Bean
     @Order(5)
     public SecurityFilterChain adminStaffFilterChain(HttpSecurity http) throws Exception {
         http
                 .securityMatcher(request -> {
                     String path = request.getServletPath();
-                    // Exclude /api/auth/login khỏi matcher này!
                     return (path.startsWith("/api/admin/")
                             || path.startsWith("/api/staff/")
                             || path.startsWith("/api/dinein/")
@@ -241,8 +238,6 @@ public class SecurityConfig {
                         .requestMatchers("/api/orders/{id}/delivery-status").hasAuthority("ROLE_STAFF")
                         .requestMatchers("/api/orders/{id}/admin-confirm").hasAuthority("ROLE_ADMIN")
                         .requestMatchers("/api/attendance/face-scan").permitAll()
-                        
-                        // DineIn endpoints for staff dashboard
                         .requestMatchers("/api/dinein/orders/all").hasAnyAuthority("ROLE_ADMIN", "ROLE_STAFF")
                         .requestMatchers("/api/dinein/orders/*/status").hasAnyAuthority("ROLE_ADMIN", "ROLE_STAFF")
                         .requestMatchers("/api/dinein/table/*/all-orders").hasAnyAuthority("ROLE_ADMIN", "ROLE_STAFF")
@@ -255,7 +250,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/dinein/table/*/end-session").hasAnyAuthority("ROLE_ADMIN", "ROLE_STAFF")
                         .requestMatchers("/api/dinein/debug/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_STAFF")
                         .requestMatchers("/api/admin/dashboard/**").hasAuthority("ROLE_ADMIN")
-
+                        .requestMatchers("/api/admin/chat/**").hasAuthority("ROLE_ADMIN")
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtFilterForAdmin, UsernamePasswordAuthenticationFilter.class)
@@ -264,6 +259,7 @@ public class SecurityConfig {
                 );
         return http.build();
     }
+
     @Bean
     @Order(6)
     public SecurityFilterChain shipperFilterChain(HttpSecurity http, JwtFilterForShipper jwtFilterForShipper) throws Exception {
