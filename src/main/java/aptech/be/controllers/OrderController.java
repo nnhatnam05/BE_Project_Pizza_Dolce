@@ -460,6 +460,7 @@ public class OrderController {
         dto.setStatus(order.getStatus());
         dto.setNote(order.getNote());
         dto.setCreatedAt(order.getCreatedAt());
+        dto.setDeliveredAt(order.getDeliveredAt());
         dto.setConfirmStatus(order.getConfirmStatus());
         dto.setRejectReason(order.getRejectReason());
         dto.setDeliveryStatus(order.getDeliveryStatus());
@@ -636,6 +637,7 @@ public class OrderController {
             case "DELIVERED":
                 order.setDeliveryStatus("DELIVERED");
                 order.setStatus("DELIVERED");
+                order.setDeliveredAt(LocalDateTime.now());
                 order.setDeliveryNote(note);
                 addOrderStatusHistory(order, "DELIVERED", note, "staff");
                 // Nếu đơn thanh toán tiền mặt, cộng điểm và gửi mail khi hoàn thành

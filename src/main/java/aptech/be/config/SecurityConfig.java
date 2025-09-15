@@ -160,7 +160,9 @@ public class SecurityConfig {
         http
                 .securityMatcher(request -> {
                     String path = request.getServletPath();
-                    return path.startsWith("/api/customer/")|| path.startsWith("/api/orders/my");
+                    return path.startsWith("/api/customer/")
+                        || path.startsWith("/api/orders/my")
+                        || path.startsWith("/api/complaints");
                 })
                 .csrf(csrf -> csrf.disable())
                 .cors(cors -> {})
@@ -186,7 +188,9 @@ public class SecurityConfig {
                                 "/api/orders/my/waiting-confirm",
                                 "/api/orders/my/*/delivery-status",
                                 "/api/orders/my/**",
-                                "/api/orders/*/points-earned"
+                                "/api/orders/*/points-earned",
+                                "/api/complaints",
+                                "/api/complaints/**"
                         ).hasAuthority("ROLE_CUSTOMER")
                         .requestMatchers("/api/orders/{id}").hasAuthority("ROLE_CUSTOMER")
                         .requestMatchers("/api/foods").permitAll()

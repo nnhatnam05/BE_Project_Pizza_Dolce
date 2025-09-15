@@ -1,6 +1,7 @@
 package aptech.be.services;
 
 import aptech.be.models.OrderEntity;
+import aptech.be.models.ComplaintCase;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
@@ -24,6 +25,84 @@ public class EmailService {
         message.setSubject("Your Verification Code");
         message.setText("Your verification code is: " + code);
         mailSender.send(message);
+    }
+
+    /**
+     * Send a simple text email with subject and body
+     */
+    public void sendSimpleEmail(String to, String subject, String body) {
+        SimpleMailMessage message = new SimpleMailMessage();
+        message.setTo(to);
+        message.setSubject(subject);
+        message.setText(body);
+        mailSender.send(message);
+    }
+
+    public void sendComplaintApprovedEmail(ComplaintCase c) {
+        try {
+            MimeMessage mimeMessage = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, true, "UTF-8");
+            helper.setTo(c.getCustomer().getEmail());
+            helper.setSubject("Complaint Approved - Case #" + c.getId());
+            helper.setFrom("namlk0310pro@gmail.com", "DOLCE Restaurant");
+
+            String html = buildComplaintEmailHtml(c, true, null);
+            helper.setText(html, true);
+            mailSender.send(mimeMessage);
+        } catch (Exception ignored) {}
+    }
+
+    public void sendComplaintRejectedEmail(ComplaintCase c, String reason) {
+        try {
+            MimeMessage mimeMessage = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, true, "UTF-8");
+            helper.setTo(c.getCustomer().getEmail());
+            helper.setSubject("Complaint Rejected - Case #" + c.getId());
+            helper.setFrom("namlk0310pro@gmail.com", "DOLCE Restaurant");
+
+            String html = buildComplaintEmailHtml(c, false, reason);
+            helper.setText(html, true);
+            mailSender.send(mimeMessage);
+        } catch (Exception ignored) {}
+    }
+
+    private String buildComplaintEmailHtml(ComplaintCase c, boolean approved, String rejectReason) {
+        OrderEntity order = c.getOrder();
+        NumberFormat currencyFormat = NumberFormat.getCurrencyInstance(Locale.US);
+        String statusText = approved ? "APPROVED" : "REJECTED";
+        String staffName = (c.getAssignedStaff()!=null ? c.getAssignedStaff().getName() : "CSKH");
+
+        StringBuilder html = new StringBuilder();
+        html.append("<!DOCTYPE html><html><head><meta charset='UTF-8'>");
+        html.append("<style>body{font-family:Segoe UI,Arial,sans-serif;background:#f5f5f5;margin:0;padding:0}.wrap{max-width:640px;margin:0 auto;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 4px 10px rgba(0,0,0,.05)}.header{background:")
+            .append(approved?"#16a34a":"#dc2626").append(";color:#fff;padding:20px;text-align:center}.content{padding:24px}.row{display:flex;justify-content:space-between;margin:8px 0}.label{color:#6b7280}.value{color:#111827}.badge{display:inline-block;padding:6px 10px;border-radius:9999px;color:#fff;background:")
+            .append(approved?"#16a34a":"#dc2626").append("}</style></head><body>");
+        html.append("<div class='wrap'>");
+        html.append("<div class='header'><h2>Complaint ").append(statusText).append("</h2>");
+        html.append("<div class='badge'>Case #").append(c.getId()).append("</div></div>");
+        html.append("<div class='content'>");
+        html.append("<h3>Customer</h3>");
+        html.append("<div class='row'><span class='label'>Name</span><span class='value'>").append(c.getCustomer()!=null?c.getCustomer().getFullName():"N/A").append("</span></div>");
+        html.append("<div class='row'><span class='label'>Email</span><span class='value'>").append(c.getCustomer()!=null?c.getCustomer().getEmail():"N/A").append("</span></div>");
+
+        html.append("<h3>Order</h3>");
+        html.append("<div class='row'><span class='label'>Order ID</span><span class='value'>#").append(order!=null?order.getId():null).append("</span></div>");
+        html.append("<div class='row'><span class='label'>Total</span><span class='value'>").append(order!=null?currencyFormat.format(order.getTotalPrice()):"N/A").append("</span></div>");
+        html.append("<div class='row'><span class='label'>Payment</span><span class='value'>").append(order!=null?String.valueOf(order.getPaymentMethod()):"N/A").append("</span></div>");
+
+        html.append("<h3>Complaint</h3>");
+        html.append("<div class='row'><span class='label'>Type</span><span class='value'>").append(c.getDecisionType()!=null?c.getDecisionType():c.getType()).append("</span></div>");
+        html.append("<div class='row'><span class='label'>Status</span><span class='value'>").append(statusText).append("</span></div>");
+        html.append("<div class='row'><span class='label'>Customer Service</span><span class='value'>").append(staffName).append("</span></div>");
+        if (c.getReason()!=null) html.append("<div class='row'><span class='label'>Reason</span><span class='value'>").append(c.getReason()).append("</span></div>");
+        if (!approved) {
+            html.append("<div class='row'><span class='label'>Reject Reason</span><span class='value'>").append(rejectReason!=null?rejectReason:"N/A").append("</span></div>");
+        } else if (c.getRefundAmount()!=null) {
+            html.append("<div class='row'><span class='label'>Refund Amount</span><span class='value'>").append(currencyFormat.format(c.getRefundAmount())).append("</span></div>");
+        }
+        html.append("<p style='margin-top:16px'>If you have any questions, please reply to this email.</p>");
+        html.append("</div></div></body></html>");
+        return html.toString();
     }
 
     public void sendPaymentSuccessEmail(String to, OrderEntity order, int pointsEarned) {

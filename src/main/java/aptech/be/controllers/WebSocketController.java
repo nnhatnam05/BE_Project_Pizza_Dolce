@@ -58,4 +58,6 @@ public class WebSocketController {
     public String handlePing() {
         return "pong";
     }
+
+    // Clients subscribe to: /topic/complaints/{id}
 } 
