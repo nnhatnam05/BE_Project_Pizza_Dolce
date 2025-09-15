@@ -11,6 +11,7 @@ public class OrderRequestDTO {
     private Double voucherDiscount; // Số tiền giảm giá từ voucher
     private Boolean needInvoice; // Khách hàng có muốn xuất hóa đơn không
     private Long tableId; // ID của bàn (cho dine-in orders)
+    private String paymentMethod; // PAYOS, CASH
 
     public Long getCustomerId() {
         return customerId;
@@ -74,5 +75,13 @@ public class OrderRequestDTO {
 
     public void setTableId(Long tableId) {
         this.tableId = tableId;
+    }
+
+    public String getPaymentMethod() {
+        return paymentMethod;
+    }
+
+    public void setPaymentMethod(String paymentMethod) {
+        this.paymentMethod = paymentMethod;
     }
 }

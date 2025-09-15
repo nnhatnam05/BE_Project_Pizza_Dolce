@@ -108,7 +108,11 @@ public class CustomerAuthController {
 
             GoogleIdTokenVerifier verifier = new GoogleIdTokenVerifier.Builder(
                     new NetHttpTransport(), new GsonFactory())
-                    .setAudience(Collections.singletonList("820863045757-bchip9abkhu4h8om190hmmg7sd6t6cq2.apps.googleusercontent.com")) // Client ID của bạn
+                    .setAudience(java.util.Arrays.asList(
+                            "820863045757-bchip9abkhu4h8om190hmmg7sd6t6cq2.apps.googleusercontent.com",
+                            "820863045757-30j9es9v30ltnk3lqera90nijpcapplp.apps.googleusercontent.com",
+                            "820863045757-uiaiscujfl7jiu61pn9nglgd45ecjlod.apps.googleusercontent.com"
+                    ))
                     .build();
 
             GoogleIdToken idToken = verifier.verify(request.getIdToken());
@@ -119,6 +123,12 @@ public class CustomerAuthController {
             }
 
             GoogleIdToken.Payload payload = idToken.getPayload();
+            // Verify issuer strictly
+            String issuer = payload.getIssuer();
+            if (!"accounts.google.com".equals(issuer) &&
+                !"https://accounts.google.com".equals(issuer)) {
+                return ResponseEntity.status(401).body("Invalid token issuer");
+            }
             String email = payload.getEmail();
             String name = (String) payload.get("name");
 

@@ -55,22 +55,22 @@ public interface OrderRepository extends JpaRepository<OrderEntity,Long> {
     List<OrderEntity> findByStaffIdOrderByCreatedAtDesc(@Param("staffId") Long staffId);
     
     // Dashboard Analytics Methods (inclusive totals)
-    @Query("SELECT COALESCE(SUM(o.totalPrice), 0) FROM OrderEntity o WHERE (o.deliveryStatus = 'DELIVERED' OR o.status IN ('PAID','COMPLETED') OR o.confirmStatus = 'CONFIRMED') AND o.createdAt BETWEEN :startDate AND :endDate")
+    @Query("SELECT COALESCE(SUM(o.totalPrice), 0) FROM OrderEntity o WHERE (o.deliveryStatus = 'DELIVERED' OR o.status IN ('PAID','COMPLETED')) AND o.createdAt BETWEEN :startDate AND :endDate")
     BigDecimal getTotalRevenueByDateRange(@Param("startDate") LocalDateTime startDate, @Param("endDate") LocalDateTime endDate);
     
-    @Query("SELECT COUNT(o) FROM OrderEntity o WHERE (o.deliveryStatus = 'DELIVERED' OR o.status IN ('PAID','COMPLETED') OR o.confirmStatus = 'CONFIRMED') AND o.createdAt BETWEEN :startDate AND :endDate")
+    @Query("SELECT COUNT(o) FROM OrderEntity o WHERE (o.deliveryStatus = 'DELIVERED' OR o.status IN ('PAID','COMPLETED')) AND o.createdAt BETWEEN :startDate AND :endDate")
     int getOrderCountByDateRange(@Param("startDate") LocalDateTime startDate, @Param("endDate") LocalDateTime endDate);
     
-    @Query("SELECT COALESCE(SUM(o.totalPrice), 0) FROM OrderEntity o WHERE (o.deliveryStatus = 'DELIVERED' OR o.status IN ('PAID','COMPLETED') OR o.confirmStatus = 'CONFIRMED')")
+    @Query("SELECT COALESCE(SUM(o.totalPrice), 0) FROM OrderEntity o WHERE (o.deliveryStatus = 'DELIVERED' OR o.status IN ('PAID','COMPLETED'))")
     BigDecimal getTotalRevenueAllTime();
 
     // Delivery-only analytics
-    @Query("SELECT COALESCE(SUM(o.totalPrice), 0) FROM OrderEntity o WHERE o.orderType = 'DELIVERY' AND o.deliveryStatus = :deliveryStatus AND o.confirmStatus = 'PAID' AND o.createdAt BETWEEN :startDate AND :endDate")
+    @Query("SELECT COALESCE(SUM(o.totalPrice), 0) FROM OrderEntity o WHERE o.orderType = 'DELIVERY' AND o.deliveryStatus = :deliveryStatus AND (o.confirmStatus = 'PAID' OR o.paymentMethod = 'CASH') AND o.createdAt BETWEEN :startDate AND :endDate")
     BigDecimal getRevenueByDeliveryStatus(@Param("deliveryStatus") String deliveryStatus,
                                           @Param("startDate") LocalDateTime startDate,
                                           @Param("endDate") LocalDateTime endDate);
 
-    @Query("SELECT COUNT(o) FROM OrderEntity o WHERE o.orderType = 'DELIVERY' AND o.deliveryStatus = :deliveryStatus AND o.confirmStatus = 'PAID' AND o.createdAt BETWEEN :startDate AND :endDate")
+    @Query("SELECT COUNT(o) FROM OrderEntity o WHERE o.orderType = 'DELIVERY' AND o.deliveryStatus = :deliveryStatus AND (o.confirmStatus = 'PAID' OR o.paymentMethod = 'CASH') AND o.createdAt BETWEEN :startDate AND :endDate")
     int getOrderCountByDeliveryStatus(@Param("deliveryStatus") String deliveryStatus,
                                       @Param("startDate") LocalDateTime startDate,
                                       @Param("endDate") LocalDateTime endDate);
@@ -102,17 +102,17 @@ public interface OrderRepository extends JpaRepository<OrderEntity,Long> {
     List<OrderEntity> findByStatusIn(List<String> statuses);
 
     // New method: Get delivery orders by delivery_status = 'DELIVERED' (regardless of order_type)
-    @Query("SELECT COALESCE(SUM(o.totalPrice), 0) FROM OrderEntity o WHERE o.deliveryStatus = 'DELIVERED' AND o.confirmStatus = 'PAID' AND o.createdAt BETWEEN :startDate AND :endDate")
+    @Query("SELECT COALESCE(SUM(o.totalPrice), 0) FROM OrderEntity o WHERE o.deliveryStatus = 'DELIVERED' AND (o.confirmStatus = 'PAID' OR o.paymentMethod = 'CASH') AND o.createdAt BETWEEN :startDate AND :endDate")
     BigDecimal getDeliveryRevenueByDeliveryStatus(@Param("startDate") LocalDateTime startDate, @Param("endDate") LocalDateTime endDate);
 
-    @Query("SELECT COUNT(o) FROM OrderEntity o WHERE o.deliveryStatus = 'DELIVERED' AND o.confirmStatus = 'PAID' AND o.createdAt BETWEEN :startDate AND :endDate")
+    @Query("SELECT COUNT(o) FROM OrderEntity o WHERE o.deliveryStatus = 'DELIVERED' AND (o.confirmStatus = 'PAID' OR o.paymentMethod = 'CASH') AND o.createdAt BETWEEN :startDate AND :endDate")
     int getDeliveryOrderCountByDeliveryStatus(@Param("startDate") LocalDateTime startDate, @Param("endDate") LocalDateTime endDate);
 
     // New method specifically for delivery orders with correct conditions
-    @Query("SELECT COALESCE(SUM(o.totalPrice), 0) FROM OrderEntity o WHERE o.orderType = 'DELIVERY' AND o.confirmStatus = 'PAID' AND o.deliveryStatus = 'DELIVERED' AND o.createdAt BETWEEN :startDate AND :endDate")
+    @Query("SELECT COALESCE(SUM(o.totalPrice), 0) FROM OrderEntity o WHERE o.orderType = 'DELIVERY' AND o.deliveryStatus = 'DELIVERED' AND (o.confirmStatus = 'PAID' OR o.paymentMethod = 'CASH') AND o.createdAt BETWEEN :startDate AND :endDate")
     BigDecimal getDeliveryRevenueWithCorrectConditions(@Param("startDate") LocalDateTime startDate, @Param("endDate") LocalDateTime endDate);
 
-    @Query("SELECT COUNT(o) FROM OrderEntity o WHERE o.orderType = 'DELIVERY' AND o.confirmStatus = 'PAID' AND o.deliveryStatus = 'DELIVERED' AND o.createdAt BETWEEN :startDate AND :endDate")
+    @Query("SELECT COUNT(o) FROM OrderEntity o WHERE o.orderType = 'DELIVERY' AND o.deliveryStatus = 'DELIVERED' AND (o.confirmStatus = 'PAID' OR o.paymentMethod = 'CASH') AND o.createdAt BETWEEN :startDate AND :endDate")
     int getDeliveryOrderCountWithCorrectConditions(@Param("startDate") LocalDateTime startDate, @Param("endDate") LocalDateTime endDate);
 
     // Customer-specific analytics methods

@@ -1,9 +1,6 @@
 package aptech.be.services;
 
 import aptech.be.dto.dashboard.*;
-import aptech.be.models.Customer;
-import aptech.be.models.CustomerDetail;
-import aptech.be.models.OrderEntity;
 import aptech.be.repositories.CustomerRepository;
 import aptech.be.repositories.OrderRepository;
 import aptech.be.repositories.FoodRepository;
@@ -52,9 +49,9 @@ public class DashboardServiceImpl implements DashboardService {
 
         System.out.println("[DashboardService] Total revenue: " + totalRevenue + ", Total orders: " + totalOrders);
 
-        // By type - try multiple delivery statuses
-        BigDecimal deliveryRevenue = orderRepository.getDeliveryRevenueWithCorrectConditions(startDate, endDate);
-        int deliveryOrders = orderRepository.getDeliveryOrderCountWithCorrectConditions(startDate, endDate);
+        // Delivery: tính theo đơn đã giao xong; PayOS = confirmStatus PAID, Cash = paymentMethod CASH
+        BigDecimal deliveryRevenue = orderRepository.getDeliveryRevenueByDeliveryStatus(startDate, endDate);
+        int deliveryOrders = orderRepository.getDeliveryOrderCountByDeliveryStatus(startDate, endDate);
         
         System.out.println("[DashboardService] Delivery orders (confirmStatus=PAID AND deliveryStatus=DELIVERED) - Revenue: " + deliveryRevenue + ", Orders: " + deliveryOrders);
         

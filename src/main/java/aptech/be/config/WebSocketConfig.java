@@ -24,5 +24,8 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
         registry.addEndpoint("/ws")
                 .setAllowedOriginPatterns("*")
                 .withSockJS();
+        // Register a native WebSocket endpoint for mobile (no SockJS)
+        registry.addEndpoint("/ws-native")
+                .setAllowedOriginPatterns("*");
     }
 } 

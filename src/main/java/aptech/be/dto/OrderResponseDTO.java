@@ -1,7 +1,6 @@
 package aptech.be.dto;
 import com.fasterxml.jackson.annotation.JsonFormat;
 
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -36,6 +35,7 @@ public class OrderResponseDTO {
     private List<OrderStatusHistoryDTO> statusHistory;
     
     private UserDTO staff;
+    private String paymentMethod;
 
     public Long getId() {
         return id;
@@ -204,5 +204,13 @@ public class OrderResponseDTO {
 
     public void setStaff(UserDTO staff) {
         this.staff = staff;
+    }
+
+    public String getPaymentMethod() {
+        return paymentMethod;
+    }
+
+    public void setPaymentMethod(String paymentMethod) {
+        this.paymentMethod = paymentMethod;
     }
 }

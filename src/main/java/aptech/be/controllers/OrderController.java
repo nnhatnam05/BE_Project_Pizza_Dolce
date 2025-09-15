@@ -9,17 +9,13 @@ import aptech.be.services.EmailService;
 import aptech.be.services.VoucherService;
 import aptech.be.services.InvoiceEmailService;
 import jakarta.servlet.http.HttpServletRequest;
-import jakarta.transaction.Transactional;
-import org.json.JSONObject;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -185,6 +181,8 @@ public class OrderController {
 
         // Gán customer đã lấy ở trên
         order.setCustomer(customer);
+        // Đơn này là giao hàng từ web/mobile → set loại đơn
+        order.setOrderType("DELIVERY");
 
 
         // Gộp các foodId trùng, cộng dồn quantity
@@ -265,14 +263,29 @@ public class OrderController {
         Random random = new Random();
         int randomNumber = 100 + random.nextInt(900);
         order.setOrderNumber(String.valueOf(randomNumber));
-        order.setStatus("WAITING_PAYMENT");
-        order.setConfirmStatus("WAITING_PAYMENT");
+        // Payment method: default PAYOS if not provided
+        String method = orderDto.getPaymentMethod() != null ? orderDto.getPaymentMethod().toUpperCase() : "PAYOS";
+        order.setPaymentMethod(method);
+        if ("CASH".equals(method)) {
+            // Cash on delivery: đơn chưa coi là thanh toán cho tới khi hoàn thành giao hàng
+            order.setStatus("PREPARING");
+            order.setConfirmStatus("CONFIRMED");
+            order.setDeliveryStatus("PREPARING");
+        } else {
+            order.setStatus("WAITING_PAYMENT");
+            order.setConfirmStatus("WAITING_PAYMENT");
+        }
         order.setRejectReason(null);
 
         // SAVE, cascade ALL sẽ tự lưu luôn orderFoods
         OrderEntity savedOrder = orderRepository.save(order);
 
-        addOrderStatusHistory(savedOrder, "WAITING_PAYMENT", null, "system");
+        if ("CASH".equals(method)) {
+            // Chỉ thêm mốc PREPARING, KHÔNG cộng điểm/ gửi mail tại thời điểm tạo đơn
+            addOrderStatusHistory(savedOrder, "PREPARING", null, "system");
+        } else {
+            addOrderStatusHistory(savedOrder, "WAITING_PAYMENT", null, "system");
+        }
         return convertToDTO(savedOrder);
     }
 
@@ -451,6 +464,7 @@ public class OrderController {
         dto.setRejectReason(order.getRejectReason());
         dto.setDeliveryStatus(order.getDeliveryStatus());
         dto.setDeliveryNote(order.getDeliveryNote());
+        dto.setPaymentMethod(order.getPaymentMethod());
         
         // THÊM THÔNG TIN VOUCHER
         dto.setVoucherCode(order.getVoucherCode());
@@ -624,6 +638,11 @@ public class OrderController {
                 order.setStatus("DELIVERED");
                 order.setDeliveryNote(note);
                 addOrderStatusHistory(order, "DELIVERED", note, "staff");
+                // Nếu đơn thanh toán tiền mặt, cộng điểm và gửi mail khi hoàn thành
+                if ("CASH".equalsIgnoreCase(order.getPaymentMethod())) {
+                    int pointsAdded = addPointsToCustomer(order);
+                    sendPaymentSuccessEmail(order, pointsAdded);
+                }
                 break;
             case "CANCELLED":
                 order.setDeliveryStatus("CANCELLED");
