@@ -10,7 +10,9 @@ public interface ComplaintCaseRepository extends JpaRepository<ComplaintCase, Lo
     List<ComplaintCase> findByCustomerId(Long customerId);
     List<ComplaintCase> findByAssignedStaff(UserEntity staff);
     List<ComplaintCase> findByStatus(String status);
+    List<ComplaintCase> findByStatusIn(List<String> statuses);
     List<ComplaintCase> findByAssignedStaffIsNull();
+    long countByOrderIdAndCustomerIdAndStatusIn(Long orderId, Long customerId, List<String> statuses);
 }
 
 

@@ -6,6 +6,8 @@ import aptech.be.models.UserEntity;
 import aptech.be.repositories.ComplaintCaseRepository;
 import aptech.be.repositories.ComplaintMessageRepository;
 import aptech.be.repositories.UserRepository;
+import aptech.be.repositories.ComplaintSettingsRepository;
+import aptech.be.models.ComplaintSettings;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -29,22 +31,66 @@ public class ComplaintStaffController {
     @Autowired private ComplaintCaseRepository complaintRepo;
     @Autowired private ComplaintMessageRepository messageRepo;
     @Autowired private UserRepository userRepo;
+    @Autowired private ComplaintSettingsRepository settingsRepo;
     @Autowired private aptech.be.repositories.OrderRepository orderRepo;
     @Autowired private aptech.be.repositories.FoodRepository foodRepo;
     @Autowired private SimpMessagingTemplate messagingTemplate;
+    @Autowired(required = false) private aptech.be.services.EmailService emailService;
 
-    @GetMapping
-    public List<ComplaintCase> myAssigned(Authentication auth) {
+    private ComplaintSettings getSettings() {
+        return settingsRepo.findById(1L).orElseGet(() -> {
+            ComplaintSettings s = new ComplaintSettings();
+            s.setId(1L);
+            return settingsRepo.save(s);
+        });
+    }
+
+    private boolean isAllowed(UserEntity me) {
+        if (me == null) return false;
+        if ("ADMIN".equalsIgnoreCase(me.getRole())) return true;
+        Long assignedId = getSettings().getAssignedSupportStaffId();
+        return assignedId != null && me.getId() != null && me.getId().equals(assignedId);
+    }
+
+    @GetMapping("/permission")
+    public ResponseEntity<?> permission(Authentication auth) {
         String email = auth.getName();
         UserEntity me = userRepo.findByEmail(email).orElse(null);
-        if (me == null) return List.of();
+        boolean allowed = isAllowed(me);
+        Long currentUserId = me != null ? me.getId() : null;
+        String currentUserRole = me != null ? me.getRole() : null;
+        Long assignedId = getSettings().getAssignedSupportStaffId();
+        return ResponseEntity.ok(java.util.Map.of(
+                "allowed", allowed,
+                "currentUserId", currentUserId,
+                "currentUserRole", currentUserRole,
+                "assignedSupportStaffId", assignedId
+        ));
+    }
+
+    @GetMapping
+    public ResponseEntity<?> myAssigned(Authentication auth) {
+        String email = auth.getName();
+        UserEntity me = userRepo.findByEmail(email).orElse(null);
+        if (!isAllowed(me)) return ResponseEntity.status(403).build();
         // Return cases assigned to me, plus unassigned (to avoid losing pending items before admin assigns)
         List<ComplaintCase> mine = complaintRepo.findByAssignedStaff(me);
         try {
             List<ComplaintCase> unassigned = complaintRepo.findByAssignedStaffIsNull();
             mine.addAll(unassigned);
         } catch (Exception ignored) {}
-        return mine;
+        return ResponseEntity.ok(mine);
+    }
+
+    // Resolved list for staff: mirror admin's resolved view
+    @GetMapping("/resolved")
+    public ResponseEntity<?> resolved(Authentication auth) {
+        String email = auth.getName();
+        UserEntity me = userRepo.findByEmail(email).orElse(null);
+        if (!isAllowed(me)) return ResponseEntity.status(403).build();
+        var statuses = java.util.Arrays.asList("RESOLVED","APPROVED","REJECTED");
+        var cases = complaintRepo.findByStatusIn(statuses);
+        return ResponseEntity.ok(cases);
     }
 
     @GetMapping("/{id}")
@@ -53,6 +99,7 @@ public class ComplaintStaffController {
         if (c == null) return ResponseEntity.notFound().build();
         String email = auth.getName();
         UserEntity me = userRepo.findByEmail(email).orElse(null);
+        if (!isAllowed(me)) return ResponseEntity.status(403).build();
         // Auto-assign to current staff if complaint is unassigned to avoid NPE and allow handling
         if (c.getAssignedStaff() == null) {
             c.setAssignedStaff(me);
@@ -70,6 +117,7 @@ public class ComplaintStaffController {
             if (c == null) return ResponseEntity.notFound().build();
             String email = auth.getName();
             UserEntity me = userRepo.findByEmail(email).orElse(null);
+            if (!isAllowed(me)) return ResponseEntity.status(403).build();
             if (me == null) return ResponseEntity.status(401).build();
             if (c.getAssignedStaff() != null && !me.getId().equals(c.getAssignedStaff().getId()) && !"ADMIN".equals(me.getRole()))
                 return ResponseEntity.status(403).build();
@@ -98,12 +146,50 @@ public class ComplaintStaffController {
         return ResponseEntity.ok(messageRepo.findByComplaintIdOrderByCreatedAtAsc(id));
     }
 
+    // Unified timeline for staff (messages + attachments)
+    @GetMapping("/{id}/timeline")
+    public ResponseEntity<?> timeline(@PathVariable Long id, Authentication auth) {
+        var c = complaintRepo.findById(id).orElse(null);
+        if (c == null) return ResponseEntity.notFound().build();
+        String email = auth.getName();
+        UserEntity me = userRepo.findByEmail(email).orElse(null);
+        if (!isAllowed(me)) return ResponseEntity.status(403).build();
+        var items = new java.util.ArrayList<java.util.Map<String,Object>>();
+        for (var m : c.getMessages()) {
+            var map = new java.util.HashMap<String,Object>();
+            map.put("type", "message");
+            map.put("id", m.getId());
+            map.put("senderType", m.getSenderType());
+            map.put("senderId", m.getSenderId());
+            map.put("message", m.getMessage());
+            map.put("createdAt", m.getCreatedAt());
+            items.add(map);
+        }
+        for (var a : c.getAttachments()) {
+            var map = new java.util.HashMap<String,Object>();
+            map.put("type", "attachment");
+            map.put("id", a.getId());
+            map.put("url", a.getUrl());
+            map.put("mimeType", a.getMimeType());
+            map.put("uploadedBy", a.getUploadedBy());
+            map.put("createdAt", a.getCreatedAt());
+            items.add(map);
+        }
+        items.sort((x,y) -> {
+            java.time.LocalDateTime dx = (java.time.LocalDateTime) x.get("createdAt");
+            java.time.LocalDateTime dy = (java.time.LocalDateTime) y.get("createdAt");
+            return dx.compareTo(dy);
+        });
+        return ResponseEntity.ok(items);
+    }
+
     @PostMapping("/{id}/messages")
     public ResponseEntity<?> postMessage(@PathVariable Long id, @RequestBody Map<String, Object> body, Authentication auth) {
         var c = complaintRepo.findById(id).orElse(null);
         if (c == null) return ResponseEntity.notFound().build();
         String email = auth.getName();
         UserEntity me = userRepo.findByEmail(email).orElse(null);
+        if (!isAllowed(me)) return ResponseEntity.status(403).build();
         // Auto-assign complaint to current staff if unassigned
         if (c.getAssignedStaff() == null) {
             c.setAssignedStaff(me);
@@ -130,13 +216,15 @@ public class ComplaintStaffController {
         if (c == null) return ResponseEntity.notFound().build();
         String email = auth.getName();
         UserEntity me = userRepo.findByEmail(email).orElse(null);
+        if (!isAllowed(me)) return ResponseEntity.status(403).build();
         if (!me.getId().equals(c.getAssignedStaff().getId()) && !"ADMIN".equals(me.getRole()))
             return ResponseEntity.status(403).build();
 
-        String action = String.valueOf(body.getOrDefault("action", "")); // REFUND or REDELIVER
+        String action = String.valueOf(body.getOrDefault("action", "")); // REFUND or REDELIVER or REJECT
         Double refundAmount = body.get("refundAmount") != null ? Double.valueOf(body.get("refundAmount").toString()) : null;
         String refundQrUrl = body.get("refundQrUrl") != null ? String.valueOf(body.get("refundQrUrl")) : null;
         Double redeliveryTotal = body.get("redeliveryTotal") != null ? Double.valueOf(body.get("redeliveryTotal").toString()) : 0.0;
+        String rejectReason = body.get("reason") != null ? String.valueOf(body.get("reason")) : null;
 
         if (Boolean.TRUE.equals(c.getAutoDecisionEnabledSnapshot())) {
             if ("REFUND".equalsIgnoreCase(action)) {
@@ -147,6 +235,15 @@ public class ComplaintStaffController {
                 c.setDecidedByStaffId(me.getId());
                 c.setStatus("RESOLVED");
                 try { messagingTemplate.convertAndSend("/topic/complaints/" + c.getId(), java.util.Map.of("type","STAFF_DECIDE_REFUND","caseId", c.getId())); } catch (Exception ignored) {}
+            } else if ("REJECT".equalsIgnoreCase(action)) {
+                c.setDecisionType("NONE");
+                c.setStaffNote(rejectReason);
+                c.setDecidedByStaffId(me.getId());
+                c.setStatus("REJECTED");
+                complaintRepo.save(c);
+                try { messagingTemplate.convertAndSend("/topic/complaints/" + c.getId(), java.util.Map.of("type","STAFF_REJECTED","caseId", c.getId())); } catch (Exception ignored) {}
+                try { if (emailService != null) emailService.sendComplaintRejectedEmail(c, rejectReason != null ? rejectReason : ""); } catch (Exception ignored) {}
+                return ResponseEntity.ok("REJECTED");
             } else if ("REDELIVER".equalsIgnoreCase(action)) {
                 c.setDecisionType("REDELIVER");
                 c.setRefundAmount(0.0);
@@ -160,6 +257,16 @@ public class ComplaintStaffController {
             complaintRepo.save(c);
             return ResponseEntity.ok("DECIDED");
         } else {
+            if ("REJECT".equalsIgnoreCase(action)) {
+                // Auto OFF: yêu cầu admin duyệt từ chối
+                c.setStatus("NEED_ADMIN_APPROVAL");
+                c.setDecisionType("REJECT");
+                c.setStaffNote(rejectReason);
+                c.setDecidedByStaffId(me.getId());
+                complaintRepo.save(c);
+                try { messagingTemplate.convertAndSend("/topic/complaints/" + c.getId(), java.util.Map.of("type","STAFF_SUBMIT_APPROVAL","caseId", c.getId())); } catch (Exception ignored) {}
+                return ResponseEntity.ok("SUBMITTED_FOR_APPROVAL");
+            }
             c.setStatus("NEED_ADMIN_APPROVAL");
             c.setDecisionType(action.toUpperCase());
             c.setRefundAmount(refundAmount);
@@ -178,6 +285,7 @@ public class ComplaintStaffController {
         if (c == null) return ResponseEntity.notFound().build();
         String email = auth.getName();
         UserEntity me = userRepo.findByEmail(email).orElse(null);
+        if (!isAllowed(me)) return ResponseEntity.status(403).build();
         if (!me.getId().equals(c.getAssignedStaff().getId()) && !"ADMIN".equals(me.getRole()))
             return ResponseEntity.status(403).build();
         if (!"REFUND".equalsIgnoreCase(c.getDecisionType())) return ResponseEntity.badRequest().body("Decision is not REFUND");
@@ -203,6 +311,7 @@ public class ComplaintStaffController {
         if (c == null) return ResponseEntity.notFound().build();
         String email = auth.getName();
         UserEntity me = userRepo.findByEmail(email).orElse(null);
+        if (!isAllowed(me)) return ResponseEntity.status(403).build();
         if (!me.getId().equals(c.getAssignedStaff().getId()) && !"ADMIN".equals(me.getRole()))
             return ResponseEntity.status(403).build();
         if (!"REDELIVER".equalsIgnoreCase(c.getDecisionType())) return ResponseEntity.badRequest().body("Decision is not REDELIVER");

@@ -1,6 +1,7 @@
 package aptech.be.controllers;
 
-import aptech.be.controllers.admin.ComplaintAdminController;
+import aptech.be.repositories.ComplaintSettingsRepository;
+import aptech.be.models.ComplaintSettings;
 import aptech.be.models.ComplaintAttachment;
 import aptech.be.models.ComplaintCase;
 import aptech.be.models.ComplaintMessage;
@@ -39,6 +40,8 @@ public class CustomerComplaintController {
     @Autowired private UserRepository userRepo;
     @Autowired private ComplaintMessageRepository messageRepo;
     @Autowired private SimpMessagingTemplate messagingTemplate;
+    @Autowired private ComplaintSettingsRepository settingsRepo;
+    @Autowired private aptech.be.services.EmailService emailService;
 
     @PostMapping
     @PreAuthorize("hasRole('CUSTOMER')")
@@ -57,6 +60,13 @@ public class CustomerComplaintController {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Access denied");
         }
 
+        // Prevent duplicate complaints on same order when an active/closed case already exists
+        List<String> blocking = java.util.Arrays.asList("OPEN","NEED_ADMIN_APPROVAL","APPROVED","RESOLVED","REJECTED");
+        long existing = complaintRepo.countByOrderIdAndCustomerIdAndStatusIn(order.getId(), order.getCustomer().getId(), blocking);
+        if (existing > 0) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Complaint for this order already exists or has been resolved");
+        }
+
         // Eligibility: delivered within 1 hour
         if (order.getDeliveredAt() == null || order.getDeliveryStatus() == null || !"DELIVERED".equals(order.getDeliveryStatus())) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Order not delivered");
@@ -72,13 +82,18 @@ public class CustomerComplaintController {
         c.setReason(reason);
         c.setStatus("OPEN");
         c.setDeliveredAtSnapshot(order.getDeliveredAt());
-        c.setAutoDecisionEnabledSnapshot(ComplaintAdminController.isAutoDecisionEnabled());
+        // Snapshot the current settings at creation time
+        ComplaintSettings settings = settingsRepo.findById(1L).orElseGet(() -> {
+            ComplaintSettings s = new ComplaintSettings();
+            s.setId(1L);
+            return settingsRepo.save(s);
+        });
+        c.setAutoDecisionEnabledSnapshot(Boolean.TRUE.equals(settings.getAutoDecisionEnabled()));
 
-        Long staffId = ComplaintAdminController.getAssignedSupportStaffId();
-        if (staffId != null) {
-            userRepo.findById(staffId).ifPresent(c::setAssignedStaff);
-        }
+        Long staffId = settings.getAssignedSupportStaffId();
+        if (staffId != null) { userRepo.findById(staffId).ifPresent(c::setAssignedStaff); }
         complaintRepo.save(c);
+        try { emailService.sendComplaintCreatedEmailToStaff(c); } catch (Exception ignored) {}
         return ResponseEntity.ok(c.getId());
     }
 

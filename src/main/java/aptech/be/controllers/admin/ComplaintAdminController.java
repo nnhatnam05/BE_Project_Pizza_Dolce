@@ -58,6 +58,41 @@ public class ComplaintAdminController {
         return allCases;
     }
 
+    // Provide a unified timeline of messages and attachments for admin view
+    @GetMapping("/{id}/timeline")
+    public ResponseEntity<?> timeline(@PathVariable Long id) {
+        var c = complaintCaseRepository.findById(id).orElse(null);
+        if (c == null) return ResponseEntity.notFound().build();
+        // Merge messages and attachments by createdAt
+        var items = new java.util.ArrayList<java.util.Map<String,Object>>();
+        for (var m : c.getMessages()) {
+            var map = new java.util.HashMap<String,Object>();
+            map.put("type", "message");
+            map.put("id", m.getId());
+            map.put("senderType", m.getSenderType());
+            map.put("senderId", m.getSenderId());
+            map.put("message", m.getMessage());
+            map.put("createdAt", m.getCreatedAt());
+            items.add(map);
+        }
+        for (var a : c.getAttachments()) {
+            var map = new java.util.HashMap<String,Object>();
+            map.put("type", "attachment");
+            map.put("id", a.getId());
+            map.put("url", a.getUrl());
+            map.put("mimeType", a.getMimeType());
+            map.put("uploadedBy", a.getUploadedBy());
+            map.put("createdAt", a.getCreatedAt());
+            items.add(map);
+        }
+        items.sort((x,y) -> {
+            java.time.LocalDateTime dx = (java.time.LocalDateTime) x.get("createdAt");
+            java.time.LocalDateTime dy = (java.time.LocalDateTime) y.get("createdAt");
+            return dx.compareTo(dy);
+        });
+        return ResponseEntity.ok(items);
+    }
+
     @GetMapping("/settings")
     public Map<String, Object> getSettings() {
         ComplaintSettings s = getSettingsEntity();
