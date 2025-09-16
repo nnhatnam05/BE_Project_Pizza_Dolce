@@ -143,7 +143,7 @@ public class SecurityConfig {
     }
 
 	@Bean
-	@Order(3)
+	@Order(7)
 	public SecurityFilterChain chatPublicChain(HttpSecurity http) throws Exception {
 		http
 			.securityMatcher(request -> request.getServletPath().startsWith("/api/chat/"))

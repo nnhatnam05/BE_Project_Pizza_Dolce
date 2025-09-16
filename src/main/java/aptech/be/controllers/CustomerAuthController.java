@@ -189,8 +189,8 @@ public class CustomerAuthController {
             CustomerDetailDTO emptyDto = new CustomerDetailDTO();
             emptyDto.setEmail(customer.getEmail());
             emptyDto.setFullName(customer.getFullName());
-        emptyDto.setCustomer(customer); // Thêm customer object để frontend có thể truy cập provider
-            emptyDto.setAddresses(new ArrayList<>()); // Thêm empty addresses
+            // Không nhúng entity Customer vào DTO để tránh vòng lặp serialize
+            emptyDto.setAddresses(new ArrayList<>());
             return ResponseEntity.ok(emptyDto);
         }
 
@@ -202,10 +202,14 @@ public class CustomerAuthController {
         dto.setPhoneNumber(detail.getPhoneNumber());
         dto.setPoint(detail.getPoint());
         dto.setVoucher(detail.getVoucher());
-        dto.setCustomer(customer); // Đảm bảo customer object được set để frontend có thể truy cập provider
+        // Không nhúng entity Customer vào DTO để tránh vòng lặp serialize
         
         // Thêm danh sách địa chỉ
-        dto.setAddresses(detail.getAddresses().stream()
+        java.util.List<aptech.be.models.CustomerAddress> addrList1 = detail.getAddresses();
+        if (addrList1 == null) {
+            addrList1 = new ArrayList<>();
+        }
+        dto.setAddresses(addrList1.stream()
                 .map(this::convertAddressToDTO)
                 .collect(Collectors.toList()));
 
@@ -292,8 +296,12 @@ public class CustomerAuthController {
         responseDto.setPhoneNumber(detail.getPhoneNumber());
         responseDto.setPoint(detail.getPoint());
         responseDto.setVoucher(detail.getVoucher());
-        responseDto.setCustomer(customer); // Đảm bảo customer object được set để frontend có thể truy cập provider
-        responseDto.setAddresses(detail.getAddresses().stream()
+        // Không nhúng entity Customer vào DTO để tránh vòng lặp serialize
+        java.util.List<aptech.be.models.CustomerAddress> addrList2 = detail.getAddresses();
+        if (addrList2 == null) {
+            addrList2 = new ArrayList<>();
+        }
+        responseDto.setAddresses(addrList2.stream()
                 .map(this::convertAddressToDTO)
                 .collect(Collectors.toList()));
         
