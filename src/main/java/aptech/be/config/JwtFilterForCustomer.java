@@ -15,11 +15,11 @@ import java.io.IOException;
 @Component("jwtFilterForCustomer")
 public class JwtFilterForCustomer extends OncePerRequestFilter {
 
-    private final JwtUtil jwtUtil;
+    private final JwtService jwtService;
     private final UserDetailsServiceImpl userDetailsService;
 
-    public JwtFilterForCustomer(JwtUtil jwtUtil, UserDetailsServiceImpl userDetailsService) {
-        this.jwtUtil = jwtUtil;
+    public JwtFilterForCustomer(JwtService jwtService, UserDetailsServiceImpl userDetailsService) {
+        this.jwtService = jwtService;
         this.userDetailsService = userDetailsService;
     }
 
@@ -44,7 +44,7 @@ public class JwtFilterForCustomer extends OncePerRequestFilter {
         if (authHeader != null && authHeader.startsWith("Bearer ")) {
             token = authHeader.substring(7);
             try {
-                username = jwtUtil.extractUsername(token);
+                username = jwtService.extractSubject(token);
             } catch (Exception e) {
                 response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
                 response.getWriter().write("Invalid JWT Token");
@@ -55,7 +55,7 @@ public class JwtFilterForCustomer extends OncePerRequestFilter {
         if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
             try {
                 var userDetails = userDetailsService.loadUserByUsername(username);
-                if (jwtUtil.validateToken(token, userDetails)) {
+                if (jwtService.validateToken(token)) {
                     UsernamePasswordAuthenticationToken authToken =
                             new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
                     authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));

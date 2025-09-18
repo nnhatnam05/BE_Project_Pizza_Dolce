@@ -19,11 +19,11 @@ import java.io.IOException;
 @Qualifier("jwtFilterForShipper")
 public class JwtFilterForShipper extends OncePerRequestFilter {
 
-    private final JwtUtil jwtUtil;
+    private final JwtService jwtService;
     private final UserDetailsService userDetailsService;
 
-    public JwtFilterForShipper(JwtUtil jwtUtil, @Qualifier("userDetailsServiceImpl") UserDetailsService userDetailsService) {
-        this.jwtUtil = jwtUtil;
+    public JwtFilterForShipper(JwtService jwtService, @Qualifier("userDetailsServiceImpl") UserDetailsService userDetailsService) {
+        this.jwtService = jwtService;
         this.userDetailsService = userDetailsService;
     }
 
@@ -40,12 +40,12 @@ public class JwtFilterForShipper extends OncePerRequestFilter {
 
         try {
             final String jwt = authHeader.substring(7);
-            final String username = jwtUtil.extractUsername(jwt);
+            final String username = jwtService.extractSubject(jwt);
 
             if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
                 UserDetails userDetails = userDetailsService.loadUserByUsername(username);
 
-                if (jwtUtil.validateToken(jwt, userDetails)) {
+                if (jwtService.validateToken(jwt)) {
                     UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
                             userDetails, null, userDetails.getAuthorities());
                     authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));

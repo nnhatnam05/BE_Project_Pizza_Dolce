@@ -16,11 +16,11 @@ import java.io.IOException;
 @Component("jwtFilterForAdmin")
 public class JwtFilterForAdmin extends OncePerRequestFilter {
 
-    private final JwtUtil jwtUtil;
+    private final JwtService jwtService;
     private final UserDetailsServiceImpl userDetailsService;
 
-    public JwtFilterForAdmin(JwtUtil jwtUtil, UserDetailsServiceImpl userDetailsService) {
-        this.jwtUtil = jwtUtil;
+    public JwtFilterForAdmin(JwtService jwtService, UserDetailsServiceImpl userDetailsService) {
+        this.jwtService = jwtService;
         this.userDetailsService = userDetailsService;
     }
 
@@ -44,7 +44,7 @@ public class JwtFilterForAdmin extends OncePerRequestFilter {
         if (authHeader != null && authHeader.startsWith("Bearer ")) {
             token = authHeader.substring(7);
             try {
-                username = jwtUtil.extractUsername(token);
+                username = jwtService.extractSubject(token);
             } catch (Exception e) {
                 response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
                 response.getWriter().write("Invalid JWT Token");
@@ -56,8 +56,7 @@ public class JwtFilterForAdmin extends OncePerRequestFilter {
 
             try {
                 UserDetails userDetails = userDetailsService.loadUserByUsername(username);
-                System.out.println("Loaded UserDetails class: " + userDetails.getClass().getName());
-                if (jwtUtil.validateToken(token, userDetails)) {
+                if (jwtService.validateToken(token)) {
                     UsernamePasswordAuthenticationToken authToken =
                             new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
                     authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
