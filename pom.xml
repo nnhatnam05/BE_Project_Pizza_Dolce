@@ -80,11 +80,11 @@
 			<scope>test</scope>
 		</dependency>
 
-		<!-- DB & JPA (PostgreSQL for Render) -->
+		<!-- DB driver: MySQL -->
 		<dependency>
-			<groupId>org.postgresql</groupId>
-			<artifactId>postgresql</artifactId>
-			<version>42.7.3</version>
+			<groupId>com.mysql</groupId>
+			<artifactId>mysql-connector-j</artifactId>
+			<version>8.4.0</version>
 		</dependency>
 
 		<!-- JSON & JWT -->
