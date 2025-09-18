@@ -1,10 +1,10 @@
 # Build stage
 FROM maven:3.9.6-eclipse-temurin-17 AS builder
 WORKDIR /app
-COPY pom.xml .
-RUN mvn -q -e -DskipTests dependency:go-offline
-COPY src ./src
-RUN mvn -q -DskipTests package
+# Copy toàn bộ project để Maven có đủ context dependencyManagement
+COPY . .
+# Build trực tiếp; bỏ go-offline để tránh lỗi UnresolvableModel khi cần repo bổ sung
+RUN mvn -B -e -DskipTests package
 
 # Runtime stage (Tomcat 10 Jakarta)
 FROM tomcat:10.1-jdk17
