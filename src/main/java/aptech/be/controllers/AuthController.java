@@ -1,7 +1,7 @@
 package aptech.be.controllers;
 
 import aptech.be.dto.AuthRequest;
-import aptech.be.config.JwtUtil;
+import aptech.be.config.JwtService;
 import aptech.be.dto.UserDTO;
 import aptech.be.dto.staff.UserWithProfileRequest;
 import aptech.be.models.UserEntity;
@@ -32,6 +32,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.scheduling.annotation.Scheduled;
 
 import org.springframework.web.multipart.MultipartFile;
+import aptech.be.services.storage.StorageService;
 import java.nio.file.*;
 
 import java.io.IOException;
@@ -51,7 +52,7 @@ public class AuthController {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final AuthenticationManager authenticationManager;
-    private final JwtUtil jwtUtil;
+    private final JwtService jwtService;
     @Autowired
     @Qualifier("userDetailsServiceImpl")
     private UserDetailsService userDetailsService;
@@ -63,22 +64,27 @@ public class AuthController {
     private final ConcurrentHashMap<String, String> verificationCodes = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, Integer> failedAttempts = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, LocalDateTime> blockedEmails = new ConcurrentHashMap<>();
+    // reset token 1 lần có hạn
+    private final ConcurrentHashMap<String, String> resetTokenToEmail = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, LocalDateTime> resetTokenExpiry = new ConcurrentHashMap<>();
     private final StaffProfileRepository staffProfileRepository;
+    private final StorageService storageService;
     private final AttendanceRecordRepository attendanceRecordRepository;
 
     public AuthController(
             UserRepository userRepository, PasswordEncoder passwordEncoder, AuthenticationManager authenticationManager,
-            JwtUtil jwtUtil,@Qualifier("userDetailsServiceImpl") UserDetailsService userDetailsService, EmailService emailService,
-            WebSocketNotificationService webSocketNotificationService, StaffProfileRepository staffProfileRepository, AttendanceRecordRepository attendanceRecordRepository) {
+            JwtService jwtService,@Qualifier("userDetailsServiceImpl") UserDetailsService userDetailsService, EmailService emailService,
+            WebSocketNotificationService webSocketNotificationService, StaffProfileRepository staffProfileRepository, AttendanceRecordRepository attendanceRecordRepository, StorageService storageService) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.authenticationManager = authenticationManager;
-        this.jwtUtil = jwtUtil;
+        this.jwtService = jwtService;
         this.userDetailsService = userDetailsService;
         this.emailService = emailService;
         this.webSocketNotificationService = webSocketNotificationService;
         this.staffProfileRepository = staffProfileRepository;
         this.attendanceRecordRepository = attendanceRecordRepository;
+        this.storageService = storageService;
     }
 
     @PostMapping("/login")
@@ -110,27 +116,21 @@ public class AuthController {
         }
 
         String code = String.format("%06d", ThreadLocalRandom.current().nextInt(1000000));
-        System.out.println("DEBUG: Creating verification code for email: " + email);
-        System.out.println("DEBUG: Generated code: " + code);
+        // logger: không in mã xác thực ra log
         
         verificationCodes.put(email, code);
-        System.out.println("DEBUG: Code stored in verificationCodes map");
+        
         
         try {
         emailService.sendVerificationCode(email, code);
-            System.out.println("DEBUG: Email sent successfully");
+            
         } catch (Exception e) {
-            System.out.println("DEBUG: Email sending failed: " + e.getMessage());
+            
         }
         
-        System.out.println("VERIFY EMAIL: " + email);
-        System.out.println("VERIFY CODE: " + code);
-
-        String tempJwt = jwtUtil.generateToken(userDetailsService.loadUserByUsername(request.getUsername()));
 
         return ResponseEntity.ok(Map.of(
                 "message", "Verification code sent to email",
-                "token", tempJwt,
                 "email", email
         ));
 
@@ -183,13 +183,9 @@ public class AuthController {
 
         if (imageFile != null && !imageFile.isEmpty()) {
             try {
-                String uploadDir = "uploads/users/";
-                String fileName = UUID.randomUUID() + "_" + imageFile.getOriginalFilename();
-                Path filePath = Paths.get(uploadDir + fileName);
-                Files.createDirectories(filePath.getParent());
-                Files.write(filePath, imageFile.getBytes());
-                newUser.setImageUrl("/uploads/users/" + fileName);
-            } catch (IOException e) {
+                String url = storageService.uploadUserImage(imageFile);
+                newUser.setImageUrl(url);
+            } catch (Exception e) {
                 return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Failed to upload image");
             }
         }
@@ -309,20 +305,9 @@ public class AuthController {
 
             if (imageFile != null && !imageFile.isEmpty()) {
                 try {
-                    if (user.getImageUrl() != null) {
-                        Path oldPath = Paths.get("uploads").resolve(user.getImageUrl().replace("/uploads/", ""));
-                        Files.deleteIfExists(oldPath);
-                    }
-
-                    String uploadDir = "uploads/users/";
-                    String fileName = UUID.randomUUID() + "_" + imageFile.getOriginalFilename();
-                    Path filePath = Paths.get(uploadDir + fileName);
-
-                    Files.createDirectories(filePath.getParent());
-                    Files.write(filePath, imageFile.getBytes());
-
-                    user.setImageUrl("/uploads/users/" + fileName);
-                } catch (IOException e) {
+                    String url = storageService.uploadUserImage(imageFile);
+                    user.setImageUrl(url);
+                } catch (Exception e) {
                     return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Failed to upload image");
                 }
             }
@@ -466,17 +451,13 @@ public class AuthController {
 
         String correctCode = verificationCodes.get(email);
         if (correctCode.equals(code)) {
-            Optional<UserEntity> userOpt = userRepository.findByEmail(email);
-            if (userOpt.isPresent()) {
-                UserEntity user = userOpt.get();
-                user.setPassword(passwordEncoder.encode("pizza123"));
-                userRepository.save(user);
-                verificationCodes.remove(email);
-                failedAttempts.remove(email);
-                return ResponseEntity.ok("Password reset to 'pizza123'");
-            } else {
-                return ResponseEntity.status(HttpStatus.NOT_FOUND).body("User not found");
-            }
+            // cấp reset token 1 lần, hết hạn 15 phút
+            String resetToken = UUID.randomUUID().toString();
+            resetTokenToEmail.put(resetToken, email);
+            resetTokenExpiry.put(resetToken, LocalDateTime.now().plusMinutes(15));
+            verificationCodes.remove(email);
+            failedAttempts.remove(email);
+            return ResponseEntity.ok(Map.of("resetToken", resetToken, "expiresInMinutes", 15));
         } else {
             int attempts = failedAttempts.getOrDefault(email, 0) + 1;
             if (attempts >= 3) {
@@ -493,24 +474,60 @@ public class AuthController {
 
     }
 
+    @PostMapping("/reset-password")
+    public ResponseEntity<?> resetPassword(@RequestBody Map<String, String> request) {
+        String resetToken = request.get("resetToken");
+        String newPassword = request.get("newPassword");
+        if (resetToken == null || newPassword == null || newPassword.isBlank()) {
+            return ResponseEntity.badRequest().body("resetToken and newPassword are required");
+        }
+
+        LocalDateTime exp = resetTokenExpiry.get(resetToken);
+        String email = resetTokenToEmail.get(resetToken);
+        if (exp == null || email == null || LocalDateTime.now().isAfter(exp)) {
+            resetTokenExpiry.remove(resetToken);
+            resetTokenToEmail.remove(resetToken);
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Reset token is invalid or expired");
+        }
+
+        Optional<UserEntity> userOpt = userRepository.findByEmail(email);
+        if (userOpt.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body("User not found");
+        }
+
+        UserEntity user = userOpt.get();
+        if (user.getIsActive() != null && !user.getIsActive()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Account is deactivated. Please contact administrator.");
+        }
+
+        user.setPassword(passwordEncoder.encode(newPassword));
+        userRepository.save(user);
+
+        // vô hiệu hoá token sau khi dùng
+        resetTokenExpiry.remove(resetToken);
+        resetTokenToEmail.remove(resetToken);
+
+        return ResponseEntity.ok("Password updated successfully");
+    }
+
     @Scheduled(fixedRate = 60000)
     public void clearExpiredBlocks() {
         blockedEmails.entrySet().removeIf(e -> LocalDateTime.now().isAfter(e.getValue()));
     }
 
     @PostMapping("/send-mail")
-    public ResponseEntity<?> sendMail(@RequestBody Map<String, String> request, @RequestHeader("Authorization") String authHeader) {
-        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid authorization header");
+    public ResponseEntity<?> sendMail(@RequestBody Map<String, String> request, @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        String username = null;
+        if (authHeader != null && authHeader.startsWith("Bearer ")) {
+            String token = authHeader.substring(7);
+            try {
+                username = jwtService.extractSubject(token);
+            } catch (Exception ignored) {}
         }
 
-        String token = authHeader.substring(7);
-        String username = jwtUtil.extractUsername(token);
-        if (username == null) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid token");
-        }
-
-        Optional<UserEntity> userOpt = userRepository.findByUsername(username);
+        Optional<UserEntity> userOpt = (username != null)
+                ? userRepository.findByUsername(username)
+                : Optional.empty();
         if (userOpt.isEmpty()) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body("User not found");
         }
@@ -551,31 +568,28 @@ public class AuthController {
         String email = request.get("email");
         String code = request.get("code");
 
-        System.out.println("DEBUG: verify2FA called with email: " + email + ", code: " + code);
+        
 
         // Validate email trước
         if (email == null || email.isBlank()) {
-            System.out.println("DEBUG: Email is null or blank");
+            
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Email is required");
         }
 
-        System.out.println("DEBUG: Checking if verificationCodes contains email: " + email);
-        System.out.println("DEBUG: verificationCodes keys: " + verificationCodes.keySet());
+        
 
         // Kiểm tra code có tồn tại không
         if (!verificationCodes.containsKey(email)) {
-            System.out.println("DEBUG: No code sent to this email");
+            
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("No code sent to this email");
         }
 
         String storedCode = verificationCodes.get(email);
-        System.out.println("DEBUG: Stored code for email " + email + ": " + storedCode);
-        System.out.println("DEBUG: Provided code: " + code);
-        System.out.println("DEBUG: Codes match: " + storedCode.equals(code));
+        
 
         // Kiểm tra code có đúng không
         if (!storedCode.equals(code)) {
-            System.out.println("DEBUG: Incorrect code provided");
+            
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Incorrect code");
         }
 
@@ -588,7 +602,7 @@ public class AuthController {
         
         // Kiểm tra user có active không ở bước 2
         if (user.getIsActive() != null && !user.getIsActive()) {
-            System.out.println("DEBUG: User account is deactivated");
+            
             verificationCodes.remove(email); // Xóa code để tránh spam
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Account is deactivated. Please contact administrator.");
         }
@@ -596,8 +610,7 @@ public class AuthController {
         verificationCodes.remove(email);
 
         final UserDetails userDetails = userDetailsService.loadUserByUsername(user.getUsername());
-        final String jwt = jwtUtil.generateToken(userDetails);
-
+        final String jwt = jwtService.generateAccessToken(userDetails);
         return ResponseEntity.ok(Collections.singletonMap("token", jwt));
     }
 
@@ -649,13 +662,12 @@ public class AuthController {
 
         String status = user.getIsActive() ? "activated" : "deactivated";
         
-        System.out.println("[DEBUG] User status changed: " + user.getUsername() + " -> " + status);
-        System.out.println("[DEBUG] User ID: " + user.getId() + ", Role: " + user.getRole());
+        
         
         // Send WebSocket notification based on status change
         if (user.getIsActive()) {
             // User was activated
-            System.out.println("[DEBUG] Sending activation notification...");
+            
             webSocketNotificationService.sendAccountActivationNotification(
                 user.getId().toString(), 
                 user.getUsername(), 
@@ -663,7 +675,7 @@ public class AuthController {
             );
         } else {
             // User was deactivated
-            System.out.println("[DEBUG] Sending deactivation notification...");
+            
             webSocketNotificationService.sendAccountDeactivationNotification(
                 user.getId().toString(), 
                 user.getUsername(), 
@@ -671,7 +683,7 @@ public class AuthController {
             );
         }
         
-        System.out.println("[DEBUG] WebSocket notification sent successfully");
+        
         
         return ResponseEntity.ok(Map.of(
             "message", "User " + status + " successfully",

@@ -1,6 +1,6 @@
 package aptech.be.controllers;
 
-import aptech.be.config.JwtProvider;
+import aptech.be.config.JwtService;
 import aptech.be.dto.customer.*;
 import aptech.be.models.Customer;
 import aptech.be.models.CustomerDetail;
@@ -48,7 +48,7 @@ public class CustomerAuthController {
     private UserDetailsServiceImpl userDetailsService;
 
     @Autowired
-    private JwtProvider jwtProvider;
+    private JwtService jwtService;
 
     @Value("${google.clientId}")
     private String googleClientId;
@@ -97,7 +97,7 @@ public class CustomerAuthController {
         if (!customerService.checkPassword(request.getPassword(), customer.getPassword())) {
             return ResponseEntity.status(401).body("Invalid password");
         }
-        String token = jwtProvider.generateTokenCustomer(customer);
+        String token = jwtService.generateTokenForCustomer(customer);
         return ResponseEntity.ok(new CustomerLoginResponse(token));
     }
 
@@ -152,7 +152,7 @@ public class CustomerAuthController {
             }
 
             // Sinh JWT cho FE
-            String token = jwtProvider.generateTokenCustomer(customer);
+            String token = jwtService.generateTokenForCustomer(customer);
 
             return ResponseEntity.ok(new CustomerLoginResponse(token));
         } catch (Exception e) {

@@ -3,7 +3,7 @@ package aptech.be.controllers.staff;
 import aptech.be.dto.staff.AttendanceReport;
 import aptech.be.dto.staff.AttendanceResponse;
 import aptech.be.services.staff.AttendanceService;
-import aptech.be.config.JwtProvider;
+import aptech.be.config.JwtService;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -20,12 +20,12 @@ import java.util.Map;
 public class AttendanceController {
 
     private final AttendanceService attendanceService;
-    private final JwtProvider jwtProvider;
+    private final JwtService jwtService;
 
     public AttendanceController(AttendanceService attendanceService,
-                                JwtProvider jwtProvider) {
+                                JwtService jwtService) {
         this.attendanceService = attendanceService;
-        this.jwtProvider = jwtProvider;
+        this.jwtService = jwtService;
     }
 
 

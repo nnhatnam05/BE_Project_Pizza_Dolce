@@ -48,7 +48,7 @@ public class PayOSService {
     
     @PostConstruct
     public void init() {
-        System.out.println("[PAYOS] Service initialized with ClientId: " + clientId);
+        // không log thông tin nhạy cảm ở production
     }
 
     public String createPaymentUrl(Long orderId, int amount, String orderInfo) {
@@ -73,8 +73,7 @@ public class PayOSService {
             // Ký bằng HMAC_SHA256
             String signature = hmacSha256(raw, checksumKey);
 
-            System.out.println("[PAYOS] Raw signature: " + raw);
-            System.out.println("[PAYOS] Generated signature: " + signature);
+            // debug nội bộ nếu cần, không log ở prod
 
             // Body
             Map<String, Object> requestBody = new HashMap<>();
@@ -95,34 +94,32 @@ public class PayOSService {
 
             String payosUrl = "https://api-merchant.payos.vn/v2/payment-requests";
 
-            System.out.println("[PAYOS] Request URL: " + payosUrl);
-            System.out.println("[PAYOS] Request Headers: " + headers);
-            System.out.println("[PAYOS] Request Body: " + requestBody);
+            
 
             try {
                 Map<String, Object> response = restTemplate.postForObject(payosUrl, request, Map.class);
-                System.out.println("[PAYOS] Response: " + response);
+                
 
                 if (response != null && "00".equals(response.get("code"))) {
                     Map<String, Object> data = (Map<String, Object>) response.get("data");
                     String checkoutUrl = (String) data.get("checkoutUrl");
-                    System.out.println("[PAYOS] Payment URL created successfully: " + checkoutUrl);
+                    
                     return checkoutUrl;
                 } else {
                     String errorMsg = response != null ? response.get("desc").toString() : "Unknown error";
-                    System.err.println("[PAYOS] Error creating payment URL: " + errorMsg);
+                    
                     throw new RuntimeException("PayOS error: " + errorMsg);
                 }
             } catch (org.springframework.web.client.HttpClientErrorException e) {
-                System.err.println("[PAYOS] HTTP Error: " + e.getStatusCode() + " - " + e.getResponseBodyAsString());
+                
                 throw new RuntimeException("PayOS HTTP error: " + e.getStatusCode() + " - " + e.getResponseBodyAsString());
             } catch (Exception e) {
-                System.err.println("[PAYOS] Exception: " + e.getMessage());
+                
                 throw new RuntimeException("PayOS exception: " + e.getMessage());
             }
 
         } catch (Exception e) {
-            System.err.println("[PAYOS] Exception creating payment URL: " + e.getMessage());
+            
             throw new RuntimeException("Lỗi tạo URL thanh toán PayOS: " + e.getMessage());
         }
     }
@@ -130,12 +127,16 @@ public class PayOSService {
 
     public boolean verifyWebhook(Map<String, Object> webhookData, String signature) {
         try {
-            // Implement webhook verification logic here
-            // For now, return true for testing
-            System.out.println("[PAYOS] Webhook verification: " + webhookData);
-            return true;
+            // Theo tài liệu PayOS: tạo raw string từ các tham số (alphabet order) và ký HMAC với checksumKey
+            String raw = webhookData.entrySet().stream()
+                    .filter(e -> e.getValue() != null)
+                    .sorted(Map.Entry.comparingByKey())
+                    .map(e -> e.getKey() + "=" + String.valueOf(e.getValue()))
+                    .reduce("", (a, b) -> a.isEmpty() ? b : a + "&" + b);
+
+            String expected = hmacSha256(raw, checksumKey);
+            return expected.equalsIgnoreCase(signature);
         } catch (Exception e) {
-            System.err.println("[PAYOS] Error verifying webhook: " + e.getMessage());
             return false;
         }
     }

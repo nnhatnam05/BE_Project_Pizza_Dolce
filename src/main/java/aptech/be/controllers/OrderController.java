@@ -793,20 +793,19 @@ public class OrderController {
         // Xử lý cả JSON và form data
         if (jsonData != null && !jsonData.isEmpty()) {
             webhookData.putAll(jsonData);
-            System.out.println("[PAYOS WEBHOOK] Received JSON webhook data: " + webhookData);
+            
         } else {
             request.getParameterMap().forEach((k, v) -> webhookData.put(k, v[0]));
-            System.out.println("[PAYOS WEBHOOK] Received form webhook data: " + webhookData);
+            
         }
         
         String signature = request.getHeader("x-signature");
-        System.out.println("[PAYOS WEBHOOK] Signature: " + signature);
         
         boolean valid = payOSService.verifyWebhook(webhookData, signature);
         Map<String, String> response = new HashMap<>();
         
         if (!valid) {
-            System.out.println("[PAYOS WEBHOOK] Invalid signature");
+            
             response.put("code", "97");
             response.put("message", "Invalid Signature");
             return ResponseEntity.ok(response);
@@ -821,25 +820,25 @@ public class OrderController {
             
             // Tìm order có status WAITING_PAYMENT và thời gian tạo gần với orderCode
             List<OrderEntity> waitingOrders = orderRepository.findByStatus("WAITING_PAYMENT");
-            System.out.println("[PAYOS WEBHOOK] Found " + waitingOrders.size() + " waiting orders");
+            
             
             OrderEntity order = null;
             
             for (OrderEntity waitingOrder : waitingOrders) {
                 if (waitingOrder.getCreatedAt() != null) {
                     long orderTime = waitingOrder.getCreatedAt().atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli();
-                    System.out.println("[PAYOS WEBHOOK] Order " + waitingOrder.getId() + " created at: " + orderTime + ", orderCode: " + orderCodeLong);
+                    
                     // Kiểm tra nếu orderCode gần với thời gian tạo order (trong khoảng 5 phút)
                     if (Math.abs(orderTime - orderCodeLong) < 300000) { // 5 phút = 300,000 ms
                         order = waitingOrder;
-                        System.out.println("[PAYOS WEBHOOK] Found matching order: " + order.getId());
+                        
                         break;
                     }
                 }
             }
             
             if (order == null) {
-                System.out.println("[PAYOS WEBHOOK] No matching order found for orderCode: " + orderCode);
+                
                 throw new RuntimeException("Order not found with orderCode: " + orderCode);
             }
             
@@ -849,10 +848,10 @@ public class OrderController {
                 return ResponseEntity.ok(response);
             }
             
-            System.out.println("[PAYOS WEBHOOK] Processing payment status: " + status + " for order: " + order.getId());
+            
             
             if ("PAID".equals(status)) {
-                System.out.println("[PAYOS WEBHOOK] Payment successful, updating order status to PAID");
+                
             order.setStatus("PAID");
             order.setConfirmStatus("PAID");
                 order.setDeliveryStatus("PREPARING");
@@ -865,20 +864,20 @@ public class OrderController {
                 // Send payment success email
                 sendPaymentSuccessEmail(order, pointsAdded);
                 
-                System.out.println("[PAYOS WEBHOOK] Order " + order.getId() + " status updated to PAID");
+                
             } else {
-                System.out.println("[PAYOS WEBHOOK] Payment failed, updating order status to FAILED");
+                
                 order.setStatus("CANCELLED");
                 order.setConfirmStatus("CANCELLED");
                 order.setDeliveryStatus("CANCELLED");
                 orderRepository.save(order);
                 addOrderStatusHistory(order, "FAILED", "Thanh toán thất bại qua PayOS", "system");
-                System.out.println("[PAYOS WEBHOOK] Order " + order.getId() + " status updated to FAILED");
+                
             }
             
             response.put("code", "00");
             response.put("message", "Confirm Success");
-            System.out.println("[PAYOS WEBHOOK] Webhook processed successfully");
+            
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             response.put("code", "99");
